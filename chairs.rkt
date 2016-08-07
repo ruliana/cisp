@@ -1,9 +1,12 @@
 #lang racket/base
-(require racket/function)
-(require racket/match)
-(require racket/string)
-(require threading)
-(require data/collection)
+(require racket/function
+         racket/match
+         racket/string
+         threading
+         data/collection
+         (only-in racket/list
+                  empty))
+
 (module+ test (require rackunit))
 
 ; == Language extensions
@@ -28,14 +31,22 @@
 
 (struct person (name group x y friends) #:prefab)
 
-(define/match (make-person done name group x y . friends)
-  [(_ "Vazio" _ _ _ _) 'empty]
-  [(_ "Parede" _ _ _ _) 'wall]
-  [(_ _ _ _ _ _)  (person name
-                          group
-                          (string->number x)
-                          (string->number y)
-                          (make-placeholder (filter non-empty-string? friends)))])
+(define (wall x y)
+  (person 'wall 'wall x y (make-placeholder empty)))
+
+(define (empty-space x y)
+  (person 'empty-space 'empty-space x y (make-placeholder empty)))
+
+(define/match (make-person name group x y . friends) 
+  [("Vazio" _ _ _ _) (empty-space x y)]
+  [("Parede" _ _ _ _) (wall x y)]
+  [(_ _ _ _ _)  (person name
+                        group
+                        x y
+                        (make-placeholder (filter non-empty-string? friends)))])
+
+(define (raw->person done name group x y . friends)
+  (apply make-person name group (string->number x) (string->number y) friends))
 
 ; == Load data protocol
 
@@ -64,7 +75,7 @@
 
 (define (list->hash lst)
   (for/hash ([line (in lst)])
-    (values (second line) (apply make-person line))))
+    (values (second line) (apply raw->person line))))
 
 (define (hash->graph field-get hsh)
   (define (get key) (ref hsh key #f)) 
@@ -154,3 +165,29 @@
    (check equal? (positions-around old-place 0 0) '(1 3 4))
    (check equal? (positions-around old-place 2 3) '(7 8 10))
    (check equal? (positions-around old-place 2 1) '(1 2 4 7 8))))
+
+; == Application
+
+(define (distribute-people a-place people)
+  (for/fold ([rslt a-place])
+            ([(name a-person) (in-hash people)])
+    (let ([x (person-x a-person)]
+          [y (person-y a-person)])
+      (place-set rslt x y a-person))))
+
+(define (name-at a-place x y)
+  (~> a-place (place-ref x y) person-name))
+
+(module+ test
+  (test-case
+   "Put people in right places"
+   (test-begin
+    (define data (hash "Ronie" (make-person "Ronie" "G1" 0 0)
+                       "Cris" (make-person "Cris" "G2" 1 0)
+                       "Johnny" (make-person "Johnny" "G1" 0 1)
+                       "Pierri" (make-person "Pierri" "G2" 1 1)))
+    (define a-place (distribute-people (make-place 2 2) (hash->graph person-friends data)))
+    (check equal? (name-at a-place 0 0) "Ronie")
+    (check equal? (name-at a-place 1 0) "Cris")
+    (check equal? (name-at a-place 0 1) "Johnny")
+    (check equal? (name-at a-place 1 1) "Pierri"))))
