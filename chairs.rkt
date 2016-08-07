@@ -23,6 +23,13 @@
 (define (nth* seq . indexes)
   (map (curry nth seq) indexes))
 
+(define (join seq [separator ""])
+  (define (join* seq rslt)
+    (if (empty? seq) rslt
+        (join* (rest seq) (string-append rslt separator (first seq)))))
+  (if (empty? seq) ""
+      (join* (rest seq) (first seq))))
+
 ; Inclusive range =/
 (define (from-to n1 n2)
   (range n1 (add1 n2)))
@@ -182,12 +189,34 @@
   (test-case
    "Put people in right places"
    (test-begin
-    (define data (hash "Ronie" (make-person "Ronie" "G1" 0 0)
-                       "Cris" (make-person "Cris" "G2" 1 0)
+    (define data (hash "Ronie"  (make-person "Ronie" "G1" 0 0)
+                       "Cris"   (make-person "Cris" "G2" 1 0)
                        "Johnny" (make-person "Johnny" "G1" 0 1)
                        "Pierri" (make-person "Pierri" "G2" 1 1)))
-    (define a-place (distribute-people (make-place 2 2) (hash->graph person-friends data)))
+    
+    (define a-place (distribute-people (make-place 2 2)
+                                       (hash->graph person-friends data)))
+    
     (check equal? (name-at a-place 0 0) "Ronie")
     (check equal? (name-at a-place 1 0) "Cris")
     (check equal? (name-at a-place 0 1) "Johnny")
     (check equal? (name-at a-place 1 1) "Pierri"))))
+
+;== Graphviz
+
+(define (graph->dotfile a-graph)
+  (define middle (for*/list ([(k v) (in-hash a-graph)]
+                             [friend (person-friends v)])
+                   (format "  \"~a\" -> \"~a\""
+                           k (person-name friend))))
+  (header->footer middle))
+
+(define (header->footer middle)
+  (~> (append '("digraph G {"
+                "  overlap=false"
+                "  splines=true"
+                "  concentrate=true"
+                "  edge[dir=none]")
+              middle
+              '("}"))
+      (join "\n")))
