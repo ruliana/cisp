@@ -2,8 +2,10 @@
 (require racket/function
          racket/match
          racket/string
+         racket/generator
          threading
          data/collection
+         racket/set
          (only-in racket/list
                   empty))
 
@@ -16,6 +18,12 @@
 
 (define-syntax-rule (define~>> (name args ...) body ...)
   (define (name args ... last-arg) (~>> last-arg body ...)))
+
+(define-syntax-rule (define/generator (name args ...) body ...)
+  (define name (generator (args ...) body ...)))
+
+(define-syntax-rule (define-with data (lets procs) ...)
+  (define-values (lets ...) (values (procs data) ...)))
 
 (define (vector-allocate size elem)
   (vector->immutable-vector (make-vector size elem)))
@@ -38,19 +46,30 @@
 
 (struct person (name group x y friends) #:prefab)
 
-(define (wall x y)
-  (person 'wall 'wall x y (make-placeholder empty)))
+(define/generator (wall x y)
+  (let loop ([col x] [row y] [i 0])
+    (define-values (c r) (yield (new-wall col row i)))
+    (loop c r (add1 i))))
 
-(define (empty-space x y)
-  (person 'empty-space 'empty-space x y (make-placeholder empty)))
+(define (new-wall x y i)
+  (person (format "wall ~a" i) 'wall x y (make-placeholder empty)))
+
+(define/generator (empty-space x y)
+  (let loop ([col x] [row y] [i 0])
+    (define-values (c r) (yield (new-empty-space col row i)))
+    (loop c r (add1 i))))
+
+(define (new-empty-space x y i)
+  (person (format "empty ~a" i) 'empty-space x y (make-placeholder empty)))
 
 (define/match (make-person name group x y . friends) 
-  [("Vazio" _ _ _ _) (empty-space x y)]
+  [("" _ _ _ _)       (empty-space x y)]
+  [("Vazio" _ _ _ _)  (empty-space x y)]
   [("Parede" _ _ _ _) (wall x y)]
-  [(_ _ _ _ _)  (person name
-                        group
-                        x y
-                        (make-placeholder (filter non-empty-string? friends)))])
+  [(_ _ _ _ _)        (person name
+                              group
+                              x y
+                              (make-placeholder (filter non-empty-string? friends)))])
 
 (define (raw->person done name group x y . friends)
   (apply make-person name group (string->number x) (string->number y) friends))
@@ -82,7 +101,8 @@
 
 (define (list->hash lst)
   (for/hash ([line (in lst)])
-    (values (second line) (apply raw->person line))))
+    (let ([a-person (apply raw->person line)])
+      (values (person-name a-person) a-person))))
 
 (define (hash->graph field-get hsh)
   (define (get key) (ref hsh key #f)) 
@@ -178,9 +198,10 @@
 (define (distribute-people a-place people)
   (for/fold ([rslt a-place])
             ([(name a-person) (in-hash people)])
-    (let ([x (person-x a-person)]
-          [y (person-y a-person)])
-      (place-set rslt x y a-person))))
+    (define-with a-person
+      (x person-x)
+      (y person-y))
+    (place-set rslt x y a-person)))
 
 (define (name-at a-place x y)
   (~> a-place (place-ref x y) person-name))
@@ -202,21 +223,54 @@
     (check equal? (name-at a-place 0 1) "Johnny")
     (check equal? (name-at a-place 1 1) "Pierri"))))
 
-;== Graphviz
+; == Simulated Annealing protocol
+
+(define (energy-at a-place x y)
+  (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
+  (define neighbors (~>> (place-around a-place x y) sequence->list))
+  (define matching (set-intersect friends neighbors))
+  (- 8 (length matching)))
+
+(define (energy a-place)
+  (define-with a-place
+    (max-x place-x)
+    (max-y place-y))
+  (for*/sum ([x (range 0 max-x)]
+             [y (range 0 max-y)])
+    (energy-at a-place x y)))
+
+(define (status-at a-place x y)
+  (define (display-names msg people)
+    (displayln (format "~a: ~a" msg (~>> people (map person-name) (join _ ", ")))))
+  (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
+  (define neighbors (~>> (place-around a-place x y) sequence->list))
+  (define matching (set-intersect friends neighbors))
+  (displayln (format "name: ~a" (~> a-place (place-ref x y) person-name)))
+  (display-names "friends" friends)
+  (display-names "neighbors" neighbors)
+  (display-names "matching" matching)
+  (display-names "missing" (set-subtract friends neighbors)))
+
+; == Graphviz
 
 (define (graph->dotfile a-graph)
   (define middle (for*/list ([(k v) (in-hash a-graph)]
                              [friend (person-friends v)])
-                   (format "  \"~a\" -> \"~a\""
+                   (format "  \"~a\" -> \"~a\";"
                            k (person-name friend))))
   (header->footer middle))
 
 (define (header->footer middle)
   (~> (append '("digraph G {"
-                "  overlap=false"
-                "  splines=true"
-                "  concentrate=true"
-                "  edge[dir=none]")
+                "  overlap=false;"
+                "  splines=true;"
+                "  concentrate=true;"
+                "  edge[dir=none];")
               middle
               '("}"))
       (join "\n")))
+
+; == Using (remove it later)
+
+(define a-graph (~> (file->list "chairs.csv") (make-graph)))
+(define a-place (distribute-people (make-place 10 10) a-graph))
