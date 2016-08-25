@@ -13,13 +13,28 @@
 
 ; == Language extensions
 
+; procfy
+; Make values acts as procs
+(define/match ((λ= value) other)
+  [((? hash?) _) (hash-ref value other other)]
+  [((? sequence?) _) (index-of value other)]
+  [(_ _) (equal? value other)])
+
+(define (filter-map proc seq)
+  (~>> seq (map proc) (filter identity)))
+
+(define-syntax-rule (make-scenario max-x max-y (name x y friends ...) ...)
+  (distribute-people (make-place max-x max-y)
+                     (hash->graph person-friends
+                                  (make-immutable-hash (list (cons name (make-person name "Grupo Fixo" x y friends ...)) ...)))))
+
 (define-syntax-rule (define~> (name args ...) body ...)
   (define (name args ... last-arg) (~> last-arg body ...)))
 
 (define-syntax-rule (define~>> (name args ...) body ...)
   (define (name args ... last-arg) (~>> last-arg body ...)))
 
-(define-syntax-rule (define/generator (name args ...) body ...)
+(define-syntax-rule (define/maker (name args ...) body ...)
   (define name (generator (args ...) body ...)))
 
 (define-syntax-rule (define-with data (lets procs) ...)
@@ -31,14 +46,14 @@
 (define (nth* seq . indexes)
   (map (curry nth seq) indexes))
 
-(define (join seq [separator ""])
+(define (join separator seq)
   (define (join* seq rslt)
     (if (empty? seq) rslt
         (join* (rest seq) (string-append rslt separator (first seq)))))
   (if (empty? seq) ""
       (join* (rest seq) (first seq))))
 
-; Inclusive range =/
+; Inclusive range =)
 (define (from-to n1 n2)
   (range n1 (add1 n2)))
 
@@ -46,7 +61,7 @@
 
 (struct person (name group x y friends) #:prefab)
 
-(define/generator (wall x y)
+(define/maker (wall x y)
   (let loop ([col x] [row y] [i 0])
     (define-values (c r) (yield (new-wall col row i)))
     (loop c r (add1 i))))
@@ -54,7 +69,7 @@
 (define (new-wall x y i)
   (person (format "wall ~a" i) 'wall x y (make-placeholder empty)))
 
-(define/generator (empty-space x y)
+(define/maker (empty-space x y)
   (let loop ([col x] [row y] [i 0])
     (define-values (c r) (yield (new-empty-space col row i)))
     (loop c r (add1 i))))
@@ -109,7 +124,7 @@
   (for ([(k v) (in-hash hsh)])
     (let* ([place (field-get v)]
            [keys (placeholder-get place)]
-           [replacements (~>> keys (map get) (filter identity) sequence->list)])
+           [replacements (~>> keys (filter-map get) sequence->list)])
       (placeholder-set! place replacements)))
   (make-reader-graph hsh))
 
@@ -149,7 +164,7 @@
 (struct place (x y positions) #:transparent)
 
 (define (make-place x y)
-  (place x y (vector-allocate (* x y) 'empty)))
+  (place x y (vector-allocate (* x y) (empty-space x y))))
 
 (define (xy->position a-place x y)
   (~> (place-x a-place) (* y) (+ x)))
@@ -162,6 +177,16 @@
   (define pos (xy->position a-place x y))
   (define new-positions (~> a-place place-positions (set-nth pos value)))
   (struct-copy place a-place [positions new-positions]))
+
+(define (place-random-change a-place)
+  (define pos (place-positions a-place))
+  (define rnd (~> pos length randoms))
+  (let* ([p1 (first rnd)]
+         [p2 (first (filter (negate (λ= p1)) rnd))]
+         [v1 (ref pos p1)]
+         [v2 (ref pos p2)]
+         [new-positions (~> pos (set-nth p1 v2) (set-nth p2 v1))])
+    (struct-copy place a-place [positions new-positions])))
 
 (define (positions-around a-place x y)
   (define row-below (max (sub1 y) 0))
@@ -210,13 +235,12 @@
   (test-case
    "Put people in right places"
    (test-begin
-    (define data (hash "Ronie"  (make-person "Ronie" "G1" 0 0)
-                       "Cris"   (make-person "Cris" "G2" 1 0)
-                       "Johnny" (make-person "Johnny" "G1" 0 1)
-                       "Pierri" (make-person "Pierri" "G2" 1 1)))
-    
-    (define a-place (distribute-people (make-place 2 2)
-                                       (hash->graph person-friends data)))
+    (define a-place
+      (make-scenario 2 2
+                     ("Ronie"  0 0)
+                     ("Cris"   1 0)
+                     ("Johnny" 0 1)
+                     ("Pierri" 1 1)))
     
     (check equal? (name-at a-place 0 0) "Ronie")
     (check equal? (name-at a-place 1 0) "Cris")
@@ -229,7 +253,7 @@
   (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
   (define neighbors (~>> (place-around a-place x y) sequence->list))
   (define matching (set-intersect friends neighbors))
-  (- 8 (length matching)))
+  (- (length neighbors) (length matching)))
 
 (define (energy a-place)
   (define-with a-place
@@ -241,7 +265,7 @@
 
 (define (status-at a-place x y)
   (define (display-names msg people)
-    (displayln (format "~a: ~a" msg (~>> people (map person-name) (join _ ", ")))))
+    (displayln (format "~a: ~a" msg (~>> people (map person-name) (join ", ")))))
   (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
   (define neighbors (~>> (place-around a-place x y) sequence->list))
   (define matching (set-intersect friends neighbors))
@@ -250,6 +274,53 @@
   (display-names "neighbors" neighbors)
   (display-names "matching" matching)
   (display-names "missing" (set-subtract friends neighbors)))
+
+(module+ test
+  (test-case
+   "Calculate energy"
+   (test-begin
+    (define max-energy
+      (make-scenario 3 3
+                     ("Ronie"  0 0) ("Cris"   1 0) ("Sato"   2 0)
+                     ("Johnny" 0 1) ("Ceará"  1 1) ("Luis"   2 1)
+                     ("Pierri" 0 2) ("Felipe" 1 2) ("Rubens" 2 2)))
+    
+    (check equal? (energy-at max-energy 1 1) 8)
+    (check equal? (energy-at max-energy 0 0) 3)
+    (check equal? (energy-at max-energy 1 0) 5)
+    (check equal? (energy max-energy) 40))
+   (test-begin
+    (define no-energy
+      (make-scenario 3 3
+                     ("Ronie"  0 0 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+                     ("Cris"   1 0 "Ronie" "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+                     ("Sato"   2 0 "Cris"  "Ronie" "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+                     ("Johnny" 0 1 "Cris"  "Sato"  "Ronie"  "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+                     ("Ceará"  1 1 "Cris"  "Sato"  "Johnny" "Ronie" "Luis"  "Pierri" "Felipe" "Rubens")
+                     ("Luis"   2 1 "Cris"  "Sato"  "Johnny" "Ceará" "Ronie" "Pierri" "Felipe" "Rubens")
+                     ("Pierri" 0 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Ronie"  "Felipe" "Rubens")
+                     ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
+                     ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
+    (check equal? (energy-at no-energy  1 1) 0)
+    (check equal? (energy no-energy) 0))))
+
+; == Simulated Annealing
+
+(define (simulated-annealing current [best current] [temperature 100] [retries 40])
+  (define new (place-random-change current))
+  (define best* (if (< (energy new) (energy best)) new best))
+  (cond
+    [(>= 0 (energy current)) current]
+    [(>= 0 retries)          best*]
+    [(>= 0 temperature)      (simulated-annealing best* best* 100 (sub1 retries))]
+    [(should-change temperature (energy current) (energy new))
+     (simulated-annealing new best* (sub1 temperature) retries)]
+    [else
+     (simulated-annealing current best* (sub1 temperature) retries)]))
+
+(define (should-change temperature current-energy new-energy)
+  (define prob (exp (/ (- current-energy new-energy) temperature)))
+  (< (random) prob))
 
 ; == Graphviz
 
@@ -261,16 +332,17 @@
   (header->footer middle))
 
 (define (header->footer middle)
-  (~> (append '("digraph G {"
-                "  overlap=false;"
-                "  splines=true;"
-                "  concentrate=true;"
-                "  edge[dir=none];")
-              middle
-              '("}"))
-      (join "\n")))
+  (~>> (append '("digraph G {"
+                 "  overlap=false;"
+                 "  splines=true;"
+                 "  concentrate=true;"
+                 "  edge[dir=none];")
+               middle
+               '("}"))
+       (join "\n")))
 
 ; == Using (remove it later)
 
 (define a-graph (~> (file->list "chairs.csv") (make-graph)))
 (define a-place (distribute-people (make-place 10 10) a-graph))
+(define rslt (simulated-annealing a-place))
