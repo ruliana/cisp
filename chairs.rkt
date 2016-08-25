@@ -25,8 +25,7 @@
 
 (define-syntax-rule (make-scenario max-x max-y (name x y friends ...) ...)
   (distribute-people (make-place max-x max-y)
-                     (hash->graph person-friends
-                                  (make-immutable-hash (list (cons name (make-person name "Grupo Fixo" x y friends ...)) ...)))))
+                     (list (make-person name "Grupo Fixo" x y friends ...) ...)))
 
 (define-syntax-rule (define~> (name args ...) body ...)
   (define (name args ... last-arg) (~> last-arg body ...)))
@@ -61,21 +60,11 @@
 
 (struct person (name group x y friends) #:prefab)
 
-(define/maker (wall x y)
-  (let loop ([col x] [row y] [i 0])
-    (define-values (c r) (yield (new-wall col row i)))
-    (loop c r (add1 i))))
+(define (wall x y)
+  (person "Parede" 'wall x y empty))
 
-(define (new-wall x y i)
-  (person (format "wall ~a" i) 'wall x y (make-placeholder empty)))
-
-(define/maker (empty-space x y)
-  (let loop ([col x] [row y] [i 0])
-    (define-values (c r) (yield (new-empty-space col row i)))
-    (loop c r (add1 i))))
-
-(define (new-empty-space x y i)
-  (person (format "empty ~a" i) 'empty-space x y (make-placeholder empty)))
+(define (empty-space x y)
+  (person "Vazio" 'empty-space x y empty))
 
 (define/match (make-person name group x y . friends) 
   [("" _ _ _ _)       (empty-space x y)]
@@ -84,7 +73,7 @@
   [(_ _ _ _ _)        (person name
                               group
                               x y
-                              (make-placeholder (filter non-empty-string? friends)))])
+                              (filter non-empty-string? friends))])
 
 (define (raw->person done name group x y . friends)
   (apply make-person name group (string->number x) (string->number y) friends))
@@ -92,71 +81,26 @@
 ; == Load data protocol
 
 (define (file->list file-name)
-  (rest (call-with-input-file file-name read-lines)))
+  (define raw (rest (call-with-input-file file-name read-lines)))
+  (map (λ (x) (apply raw->person x)) raw))
 
 (define (read-lines file)
   (for/list ([line (in-lines file)])
     (map string-trim (string-split line "," #:trim? #f))))
 
 (module+ test
-  (define (position line) (~> line (subsequence 3 5) sequence->list))
+  (define (position a-person)
+    (define-with a-person
+      (x person-x)
+      (y person-y))
+    (list x y))
   
   (test-case
    "Load file"
    (test-begin
     (define data (file->list "chairs.csv"))
-    (check equal? (position (first data)) '("0" "0"))
-    (check equal? (position (last data)) '("9" "9")))))
-
-; == Data -> Struct protocol
-
-(define~>> (make-graph)
-  list->hash
-  (hash->graph person-friends))
-
-(define (list->hash lst)
-  (for/hash ([line (in lst)])
-    (let ([a-person (apply raw->person line)])
-      (values (person-name a-person) a-person))))
-
-(define (hash->graph field-get hsh)
-  (define (get key) (ref hsh key #f)) 
-  (for ([(k v) (in-hash hsh)])
-    (let* ([place (field-get v)]
-           [keys (placeholder-get place)]
-           [replacements (~>> keys (filter-map get) sequence->list)])
-      (placeholder-set! place replacements)))
-  (make-reader-graph hsh))
-
-(module+ test
-  (define~>> (friends-of name)
-    (ref _ name)
-    person-friends
-    (map person-name)
-    sequence->list)
-  
-  (define (first-friend a-person)
-    (~> a-person person-friends first))
-  
-  (define data '(("" "Ronie"  "Empresas" "0" "0" "Johnny" "Pierri" )
-                 ("" "Johnny" "Empresas" "1" "0" "Pierri")
-                 ("" "Pierri" "Empresas" "1" "1")))
-  
-  (define graph (make-graph data))
-  
-  (check = (length graph) 3)
-  (check equal? (person-x (ref graph "Ronie")) 0)
-  (check equal? (person-y (ref graph "Pierri")) 1)
-  
-  (test-case
-   "Basic relations on graph"
-   (check equal? (friends-of "Ronie" graph) '("Johnny" "Pierri"))
-   (check equal? (friends-of "Johnny" graph) '("Pierri"))
-   (check equal? (friends-of "Pierri" graph) '()))
-  
-  (test-case
-   "Friend of friend"
-   (check equal? (~>> (ref graph "Ronie") first-friend first-friend person-name) "Pierri")))
+    (check equal? (position (first data)) '(0 0))
+    (check equal? (position (last data)) '(9 9)))))
 
 ; == Place protocol
 ; Who goes where.
@@ -209,7 +153,7 @@
    "Set and recover data from place"
    (test-begin
     (define new-place (place-set old-place 1 2 'testing))
-    (check equal? (place-ref old-place 1 2) 'empty)
+    (check equal? (place-ref old-place 1 2) (empty-space 3 4))
     (check equal? (place-ref new-place 1 2) 'testing)))
   (test-case
    "Get positions around somewhere"
@@ -222,7 +166,7 @@
 
 (define (distribute-people a-place people)
   (for/fold ([rslt a-place])
-            ([(name a-person) (in-hash people)])
+            ([a-person (in people)])
     (define-with a-person
       (x person-x)
       (y person-y))
@@ -251,7 +195,7 @@
 
 (define (energy-at a-place x y)
   (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
-  (define neighbors (~>> (place-around a-place x y) sequence->list))
+  (define neighbors (~>> (place-around a-place x y) (map person-name) sequence->list))
   (define matching (set-intersect friends neighbors))
   (- (length neighbors) (length matching)))
 
@@ -306,21 +250,39 @@
 
 ; == Simulated Annealing
 
-(define (simulated-annealing current [best current] [temperature 100] [retries 40])
-  (define new (place-random-change current))
-  (define best* (if (< (energy new) (energy best)) new best))
-  (cond
-    [(>= 0 (energy current)) current]
-    [(>= 0 retries)          best*]
-    [(>= 0 temperature)      (simulated-annealing best* best* 100 (sub1 retries))]
-    [(should-change temperature (energy current) (energy new))
-     (simulated-annealing new best* (sub1 temperature) retries)]
-    [else
-     (simulated-annealing current best* (sub1 temperature) retries)]))
+(struct state (energy data))
+
+(define (new-state data)
+  (state (energy data) data))
+
+(define (decrease temperature)
+  (* temperature 0.98))
+
+(define (simulated-annealing initial-state [initial-temperature 3] [max-retries 1000])
+  (define (loop current best temperature retries)
+    (define new (~>> (state-data current) place-random-change new-state))
+    (define e-new (state-energy new))
+    (define e-best (state-energy best))
+    (define e-current (state-energy current))
+    (define best* (if (< e-new e-best) new best))
+    (define prob (exp (/ (- e-current e-new) (max 0.00001 temperature))))
+    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a \n" (exact->inexact temperature) retries e-best e-current e-new prob)
+    (cond
+      [(>= 0 e-current)        current]
+      [(>= 0 retries)          best*]
+      [(>= 0.0001 temperature) (loop best* best* initial-temperature (sub1 retries))]
+      [(should-change temperature e-current e-new)
+       (loop new best* (decrease temperature) retries)]
+      [else
+       (loop current best* (decrease temperature) retries)]))
+  (define first-state (new-state initial-state))
+  (loop first-state first-state initial-temperature max-retries))
 
 (define (should-change temperature current-energy new-energy)
-  (define prob (exp (/ (- current-energy new-energy) temperature)))
-  (< (random) prob))
+  (if (>= 0 temperature)
+      (< new-energy current-energy)
+      (let ([prob (exp (/ (- current-energy new-energy) temperature))])
+        (< (random) prob))))
 
 ; == Graphviz
 
@@ -343,6 +305,6 @@
 
 ; == Using (remove it later)
 
-(define a-graph (~> (file->list "chairs.csv") (make-graph)))
-(define a-place (distribute-people (make-place 10 10) a-graph))
+(define a-place (distribute-people (make-place 10 10) (file->list "chairs.csv")))
 (define rslt (simulated-annealing a-place))
+(displayln (state-energy rslt))
