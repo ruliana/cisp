@@ -2,6 +2,7 @@
 (require racket/function
          racket/match
          racket/string
+         racket/format
          racket/generator
          threading
          data/collection
@@ -264,7 +265,12 @@
     (define best* (if (< e-new e-best) new best))
     (define temperature (temperature-for cycle))
     (define prob (exp (/ (- e-current e-new) (max 0.000001 temperature))))
-    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a \n" (exact->inexact temperature) cycle e-best e-current e-new prob)
+    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
+            (~r (exact->inexact temperature) #:precision '(= 4))
+            cycle e-best e-current e-new
+            (~r (* 100 prob)
+                #:precision '(= 2)
+                #:min-width 6))
     (cond
       [(>= 0 e-current) current]
       [(>= cycle max-cycles) best*] 
