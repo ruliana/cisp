@@ -255,34 +255,38 @@
 (define (new-state data)
   (state (energy data) data))
 
-(define (decrease temperature)
-  (* temperature 0.98))
-
-(define (simulated-annealing initial-state [initial-temperature 3] [max-retries 1000])
-  (define (loop current best temperature retries)
+(define (simulated-annealing initial-state [max-cycles 100000])
+  (define (loop current best cycle)
     (define new (~>> (state-data current) place-random-change new-state))
     (define e-new (state-energy new))
     (define e-best (state-energy best))
     (define e-current (state-energy current))
     (define best* (if (< e-new e-best) new best))
-    (define prob (exp (/ (- e-current e-new) (max 0.00001 temperature))))
-    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a \n" (exact->inexact temperature) retries e-best e-current e-new prob)
+    (define temperature (temperature-for cycle))
+    (define prob (exp (/ (- e-current e-new) (max 0.000001 temperature))))
+    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a \n" (exact->inexact temperature) cycle e-best e-current e-new prob)
     (cond
-      [(>= 0 e-current)        current]
-      [(>= 0 retries)          best*]
-      [(>= 0.0001 temperature) (loop best* best* initial-temperature (sub1 retries))]
+      [(>= 0 e-current) current]
+      [(>= cycle max-cycles) best*] 
       [(should-change temperature e-current e-new)
-       (loop new best* (decrease temperature) retries)]
+       (loop new best* (add1 cycle))]
       [else
-       (loop current best* (decrease temperature) retries)]))
+       (loop current best* (add1 cycle))]))
   (define first-state (new-state initial-state))
-  (loop first-state first-state initial-temperature max-retries))
+  (loop first-state first-state 0))
 
 (define (should-change temperature current-energy new-energy)
   (if (>= 0 temperature)
       (< new-energy current-energy)
       (let ([prob (exp (/ (- current-energy new-energy) temperature))])
         (< (random) prob))))
+
+(define (temperature-for time)
+  (define cycle (remainder time (add1 10000)))
+  (define center 2000)
+  (define height 3)
+  (define slope 0.003)
+  (/ height (+ 1 (exp (* slope (- cycle center))))))
 
 ; == Graphviz
 
