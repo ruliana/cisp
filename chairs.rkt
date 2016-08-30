@@ -256,16 +256,18 @@
 (define (new-state data)
   (state (energy data) data))
 
-(define (simulated-annealing initial-state [max-cycles 100000])
-  (define (loop current best cycle)
+(define (simulated-annealing initial-state [max-steps 100000])
+  (define (loop current best step)
     (define new (~>> (state-data current) place-random-change new-state))
     (define e-new (state-energy new))
     (define e-best (state-energy best))
     (define e-current (state-energy current))
     (define best* (if (< e-new e-best) new best))
+    (define cycle (remainder step (add1 10000)))
     (define temperature (temperature-for cycle))
-    (define prob (exp (/ (- e-current e-new) (max 0.000001 temperature))))
-    (printf "t:~a r:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
+    (define prob (let ([p (exp (/ (- e-current e-new) (max 0.000001 temperature)))])
+                   (if (> p 1) 1 p)))
+    (printf "t:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
             (~r (exact->inexact temperature) #:precision '(= 4))
             cycle e-best e-current e-new
             (~r (* 100 prob)
@@ -273,11 +275,10 @@
                 #:min-width 6))
     (cond
       [(>= 0 e-current) current]
-      [(>= cycle max-cycles) best*] 
-      [(should-change temperature e-current e-new)
-       (loop new best* (add1 cycle))]
-      [else
-       (loop current best* (add1 cycle))]))
+      [(>= cycle max-steps) best*]
+      [(>= cycle 10000) (loop best* best* (add1 step))]
+      [(should-change temperature e-current e-new) (loop new best* (add1 step))]
+      [else (loop current best* (add1 step))]))
   (define first-state (new-state initial-state))
   (loop first-state first-state 0))
 
@@ -287,8 +288,7 @@
       (let ([prob (exp (/ (- current-energy new-energy) temperature))])
         (< (random) prob))))
 
-(define (temperature-for time)
-  (define cycle (remainder time (add1 10000)))
+(define (temperature-for cycle)
   (define center 2000)
   (define height 3)
   (define slope 0.003)
