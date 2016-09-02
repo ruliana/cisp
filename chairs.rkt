@@ -1,65 +1,14 @@
-#lang racket/base
-(require racket/function
-         racket/match
-         racket/string
-         racket/format
-         racket/generator
-         threading
-         data/collection
-         racket/set
-         (only-in racket/list
-                  empty))
+#lang s-exp "rocket.rkt"
 
 (module+ test (require rackunit))
-
-; == Language extensions
-
-; procfy
-; Make values acts as procs
-(define/match ((λ= value) other)
-  [((? hash?) _) (hash-ref value other other)]
-  [((? sequence?) _) (index-of value other)]
-  [(_ _) (equal? value other)])
-
-(define (filter-map proc seq)
-  (~>> seq (map proc) (filter identity)))
 
 (define-syntax-rule (make-scenario max-x max-y (name x y friends ...) ...)
   (distribute-people (make-place max-x max-y)
                      (list (make-person name "Grupo Fixo" x y friends ...) ...)))
 
-(define-syntax-rule (define~> (name args ...) body ...)
-  (define (name args ... last-arg) (~> last-arg body ...)))
-
-(define-syntax-rule (define~>> (name args ...) body ...)
-  (define (name args ... last-arg) (~>> last-arg body ...)))
-
-(define-syntax-rule (define/maker (name args ...) body ...)
-  (define name (generator (args ...) body ...)))
-
-(define-syntax-rule (define-with data (lets procs) ...)
-  (define-values (lets ...) (values (procs data) ...)))
-
-(define (vector-allocate size elem)
-  (vector->immutable-vector (make-vector size elem)))
-
-(define (nth* seq . indexes)
-  (map (curry nth seq) indexes))
-
-(define (join separator seq)
-  (define (join* seq rslt)
-    (if (empty? seq) rslt
-        (join* (rest seq) (string-append rslt separator (first seq)))))
-  (if (empty? seq) ""
-      (join* (rest seq) (first seq))))
-
-; Inclusive range =)
-(define (from-to n1 n2)
-  (range n1 (add1 n2)))
-
 ; == Struct protocol
 
-(struct person (name group x y friends) #:prefab)
+(struct person (name group x y friends) #:transparent)
 
 (define (wall x y)
   (person "Parede" 'wall x y empty))
@@ -147,6 +96,12 @@
   (apply nth*
          (place-positions a-place)
          (positions-around a-place x y)))
+
+(define (display-place a-place)
+  (define row-size (place-x a-place))
+  (define positions (map person-name (place-positions a-place)))
+  (for* ([row (chunk row-size positions)])
+    (displayln (join "\t" row))))
 
 (module+ test
   (define old-place (make-place 3 4))
@@ -318,3 +273,4 @@
 (define a-place (distribute-people (make-place 10 10) (file->list "chairs.csv")))
 (define rslt (simulated-annealing a-place))
 (displayln (state-energy rslt))
+(display-place a-place)
