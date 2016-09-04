@@ -89,7 +89,6 @@
   (let*-values ([(p1 v1) (pos+per #:tabu walls)]
                 [(p2 v2) (pos+per #:tabu (cons p1 walls))]
                 [(new-positions) (~> positions (set-nth p1 v2) (set-nth p2 v1))])
-    (displayln new-positions)
     (struct-copy place a-place [positions new-positions])))
 
 (define (positions-around a-place x y)
