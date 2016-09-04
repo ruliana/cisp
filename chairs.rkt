@@ -11,21 +11,25 @@
 (struct person (name group x y friends) #:transparent)
 
 (define (wall x y)
-  (person "Parede" 'wall x y empty))
+  (person "Parede" 'wall x y (set)))
+
+(define (screen x y)
+  (person "Monitor" 'wall x y (set)))
 
 (define (empty-space x y)
-  (person "Vazio" 'empty-space x y empty))
+  (person "Vazio" 'empty-space x y (set)))
 
 (define/match (make-person name group x y . friends) 
   [("" _ _ _ _)       (empty-space x y)]
   [("Vazio" _ _ _ _)  (empty-space x y)]
   [("Parede" _ _ _ _) (wall x y)]
+  [("Monitor" _ _ _ _) (screen x y)]
   [(_ _ _ _ _)        (person name
                               group
                               x y
-                              (filter non-empty-string? friends))])
+                              (list->set (sequence->list (filter non-empty-string? friends))))])
 
-(define (raw->person done name group x y . friends)
+(define (raw->person name group x y . friends)
   (apply make-person name group (string->number x) (string->number y) friends))
 
 ; == Load data protocol
@@ -72,14 +76,20 @@
   (define new-positions (~> a-place place-positions (set-nth pos value)))
   (struct-copy place a-place [positions new-positions]))
 
+(define walls (sequence->list (from-to 0 9)))
 (define (place-random-change a-place)
-  (define pos (place-positions a-place))
-  (define rnd (~> pos length randoms))
-  (let* ([p1 (first rnd)]
-         [p2 (first (filter (negate (λ= p1)) rnd))]
-         [v1 (ref pos p1)]
-         [v2 (ref pos p2)]
-         [new-positions (~> pos (set-nth p1 v2) (set-nth p2 v1))])
+  (define positions (place-positions a-place))
+  (define rnd (~> positions length randoms))
+  (define (pos+per #:tabu [tabu empty])
+    (define pos (~>> rnd
+                     (filter (negate (λ= tabu)))
+                     first))
+    (define per (ref positions pos))
+    (values pos per))
+  (let*-values ([(p1 v1) (pos+per #:tabu walls)]
+                [(p2 v2) (pos+per #:tabu (cons p1 walls))]
+                [(new-positions) (~> positions (set-nth p1 v2) (set-nth p2 v1))])
+    (displayln new-positions)
     (struct-copy place a-place [positions new-positions])))
 
 (define (positions-around a-place x y)
@@ -101,7 +111,7 @@
   (define row-size (place-x a-place))
   (define positions (map person-name (place-positions a-place)))
   (for* ([row (chunk row-size positions)])
-    (displayln (join "\t" row))))
+    (displayln (join "\t" (reverse row)))))
 
 (module+ test
   (define old-place (make-place 3 4))
@@ -150,17 +160,17 @@
 ; == Simulated Annealing protocol
 
 (define (energy-at a-place x y)
-  (define friends (~>> (place-ref a-place x y) person-friends sequence->list))
-  (define neighbors (~>> (place-around a-place x y) (map person-name) sequence->list))
-  (define matching (set-intersect friends neighbors))
-  (- (length neighbors) (length matching)))
+  (define friends (person-friends (place-ref a-place x y)))
+  (define neighbors (for/set ([p (place-around a-place x y)]) (person-name p)))
+  (let ([matching (set-intersect neighbors friends)])
+    (- (length neighbors) (length matching))))
 
 (define (energy a-place)
   (define-with a-place
     (max-x place-x)
     (max-y place-y))
-  (for*/sum ([x (range 0 max-x)]
-             [y (range 0 max-y)])
+  (for*/sum ([x (in-range 0 max-x)]
+             [y (in-range 0 max-y)])
     (energy-at a-place x y)))
 
 (define (status-at a-place x y)
@@ -213,27 +223,29 @@
 
 (define (simulated-annealing initial-state [max-steps 100000])
   (define (loop current best step)
-    (define new (~>> (state-data current) place-random-change new-state))
-    (define e-new (state-energy new))
-    (define e-best (state-energy best))
-    (define e-current (state-energy current))
-    (define best* (if (< e-new e-best) new best))
-    (define cycle (remainder step (add1 10000)))
-    (define temperature (temperature-for cycle))
-    (define prob (let ([p (exp (/ (- e-current e-new) (max 0.000001 temperature)))])
-                   (if (> p 1) 1 p)))
-    (printf "t:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
-            (~r (exact->inexact temperature) #:precision '(= 4))
-            cycle e-best e-current e-new
-            (~r (* 100 prob)
-                #:precision '(= 2)
-                #:min-width 6))
-    (cond
-      [(>= 0 e-current) current]
-      [(>= cycle max-steps) best*]
-      [(>= cycle 10000) (loop best* best* (add1 step))]
-      [(should-change temperature e-current e-new) (loop new best* (add1 step))]
-      [else (loop current best* (add1 step))]))
+    (with-handlers ([exn:break? (λ (_e) best)])
+      (define new (~>> (state-data current) place-random-change new-state))
+      (define e-new (state-energy new))
+      (define e-best (state-energy best))
+      (define e-current (state-energy current))
+      (define best* (if (< e-new e-best) new best))
+      (define cycle (remainder step (add1 10000)))
+      (define temperature (temperature-for cycle))
+      (define prob (let ([p (exp (/ (- e-current e-new)
+                                    (max 0.000001 temperature)))])
+                     (if (> p 1) 1 p)))
+      #;(printf "t:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
+                (~r (exact->inexact temperature) #:precision '(= 4))
+                cycle e-best e-current e-new
+                (~r (* 100 prob)
+                    #:precision '(= 2)
+                    #:min-width 6))
+      (cond
+        [(>= 0 e-current) current]
+        [(>= step max-steps) best*]
+        [(>= cycle 10000) (loop best* best* (add1 step))]
+        [(should-change temperature e-current e-new) (loop new best* (add1 step))]
+        [else (loop current best* (add1 step))])))
   (define first-state (new-state initial-state))
   (loop first-state first-state 0))
 
@@ -244,8 +256,8 @@
         (< (random) prob))))
 
 (define (temperature-for cycle)
-  (define center 2000)
-  (define height 3)
+  (define center 1000)
+  (define height 2)
   (define slope 0.003)
   (/ height (+ 1 (exp (* slope (- cycle center))))))
 
@@ -273,4 +285,4 @@
 (define a-place (distribute-people (make-place 10 10) (file->list "chairs.csv")))
 (define rslt (simulated-annealing a-place))
 (displayln (state-energy rslt))
-(display-place a-place)
+(display-place (state-data rslt))
