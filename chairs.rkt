@@ -11,13 +11,13 @@
 (struct person (name group x y friends) #:transparent)
 
 (define (wall x y)
-  (person "Parede" 'wall x y (set)))
+  (person "Parede" 'wall x y empty))
 
 (define (screen x y)
-  (person "Monitor" 'wall x y (set)))
+  (person "Monitor" 'wall x y empty))
 
 (define (empty-space x y)
-  (person "Vazio" 'empty-space x y (set)))
+  (person "Vazio" 'empty-space x y empty))
 
 (define/match (make-person name group x y . friends) 
   [("" _ _ _ _)       (empty-space x y)]
@@ -27,7 +27,7 @@
   [(_ _ _ _ _)        (person name
                               group
                               x y
-                              (list->set (sequence->list (filter non-empty-string? friends))))])
+                              (sequence->list (filter non-empty-string? friends)))])
 
 (define (raw->person name group x y . friends)
   (apply make-person name group (string->number x) (string->number y) friends))
@@ -96,8 +96,8 @@
   (define row-above (min (add1 y) (sub1 (place-y a-place))))
   (define col-left  (max (sub1 x) 0))
   (define col-right (min (add1 x) (sub1 (place-x a-place))))
-  (for*/list ([row (from-to row-below row-above)]
-              [col (from-to col-left col-right)]
+  (for*/list ([row (remove-duplicates (list y row-below row-above))]
+              [col (remove-duplicates (list x col-left col-right))]
               #:when (not (and (= x col) (= y row))))
     (xy->position a-place col row)))
 
@@ -158,11 +158,22 @@
 
 ; == Simulated Annealing protocol
 
+#;(define (energy-at a-place x y)
+    (define friends (list->set (person-friends (place-ref a-place x y))))
+    (define neighbors (for/set ([p (place-around a-place x y)]) (person-name p)))
+    (let ([matching (set-intersect neighbors friends)])
+      (- (length neighbors) (length matching))))
+
 (define (energy-at a-place x y)
-  (define friends (person-friends (place-ref a-place x y)))
-  (define neighbors (for/set ([p (place-around a-place x y)]) (person-name p)))
-  (let ([matching (set-intersect neighbors friends)])
-    (- (length neighbors) (length matching))))
+  (let/cc return 
+    (define friends (person-friends (place-ref a-place x y)))
+    (when (empty? friends) (return 0))
+    (define neighbors (for/list ([p (place-around a-place x y)]) (person-name p)))
+    (for/sum ([f friends]
+              [p '(10 10 8 8 6 6 6 6 4 4 4 4 4 4 4 4 4 4 4 4)])
+      (let* ([i (or (index-of neighbors f) 20)])
+        ;(printf "~a ~a ~a ~a\n" (person-name (place-ref a-place x y)) f i (- 10 (/ p (add1 (quotient i 2))))) 
+        (- 10 (/ p (add1 (quotient i 2))))))))
 
 (define (energy a-place)
   (define-with a-place
@@ -220,11 +231,13 @@
 (define (new-state data)
   (state (energy data) data))
 
-(define (simulated-annealing initial-state [max-steps 100000])
+(define (simulated-annealing initial-state [max-steps 3000000])
   (define box-best (box initial-state))
+  (define cycle-size 3000)
   (with-handlers ([exn:break? (λ (_e) (unbox box-best))])
     (define (loop current best step)
       (set-box! box-best best)
+      ; If you want to optimize GC :P
       ;(when (= 0 (remainder step 10)) (collect-garbage 'minor))
       ;(when (= 0 (remainder step 1000)) (collect-garbage 'major))
       (define new (~>> (state-data current) place-random-change new-state))
@@ -232,21 +245,25 @@
       (define e-best (state-energy best))
       (define e-current (state-energy current))
       (define best* (if (< e-new e-best) new best))
-      (define cycle (remainder step (add1 10000)))
+      (define cycle (remainder step (add1 cycle-size)))
       (define temperature (temperature-for cycle))
       (define prob (let ([p (exp (/ (- e-current e-new)
                                     (max 0.000001 temperature)))])
                      (if (> p 1) 1 p)))
-      (printf "t:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
-                (~r (exact->inexact temperature) #:precision '(= 4))
-                cycle e-best e-current e-new
-                (~r (* 100 prob)
-                    #:precision '(= 2)
-                    #:min-width 6))
+      (printf "t:~a s:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
+              (~r (exact->inexact temperature) #:precision '(= 4))
+              (~r step #:min-width 7)
+              (~r cycle #:min-width 4)
+              (~r (exact->inexact e-best) #:precision '(= 1))
+              (~r (exact->inexact e-current) #:precision '(= 1))
+              (~r (exact->inexact e-new) #:precision '(= 1))
+              (~r (* 100 prob)
+                  #:precision '(= 2)
+                  #:min-width 6))
       (cond
         [(>= 0 e-current) current]
         [(>= step max-steps) best*]
-        [(>= cycle 10000) (loop best* best* (add1 step))]
+        [(>= cycle cycle-size) (loop best* best* (add1 step))]
         [(should-change temperature e-current e-new) (loop new best* (add1 step))]
         [else (loop current best* (add1 step))]))
     (define first-state (new-state initial-state))
@@ -260,7 +277,7 @@
 
 (define (temperature-for cycle)
   (define center 1000)
-  (define height 2)
+  (define height 6)
   (define slope 0.003)
   (/ height (+ 1 (exp (* slope (- cycle center))))))
 

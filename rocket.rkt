@@ -9,6 +9,7 @@
          threading
          data/collection
          (only-in racket/list
+                  remove-duplicates
                   empty))
 
 (provide (all-from-out racket/base
@@ -21,6 +22,7 @@
                        threading
                        data/collection)
          empty
+         remove-duplicates
          (all-defined-out))
 
 ; == Language extensions

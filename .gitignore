@@ -1,4 +1,6 @@
 compiled/
+data/
+chairs
 *~
 *.txt
-chairs
+*.zo
