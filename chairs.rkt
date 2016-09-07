@@ -1,6 +1,7 @@
 #lang s-exp "rocket.rkt"
 
 (provide (struct-out person)
+         make-person
          wall
          screen
          empty-space
@@ -177,21 +178,23 @@
 ; == Simulated Annealing protocol
 
 (define (energy-at a-place x y)
-    (define friends (list->set (person-friends (place-ref a-place x y))))
-    (define neighbors (for/set ([p (place-around a-place x y)]) (person-name p)))
-    (let ([matching (set-intersect neighbors friends)])
-      (- (length neighbors) (length matching))))
+  (define friends (person-friends (place-ref a-place x y)))
+  (define neighbors (for/list ([p (place-around a-place x y)]) (person-name p)))
+  (if (empty? friends) (length neighbors)
+      (for/fold ([e (length neighbors)])
+                ([f (in friends)])
+        (- e (if (member f neighbors) 1 0)))))
 
 #;(define (energy-at a-place x y)
-  (let/cc return 
-    (define friends (person-friends (place-ref a-place x y)))
-    (when (empty? friends) (return 0))
-    (define neighbors (for/list ([p (place-around a-place x y)]) (person-name p)))
-    (for/sum ([f friends]
-              [p '(10 10 8 8 6 6 6 6 4 4 4 4 4 4 4 4 4 4 4 4)])
-      (let* ([i (or (index-of neighbors f) 20)])
-        ;(printf "~a ~a ~a ~a\n" (person-name (place-ref a-place x y)) f i (- 10 (/ p (add1 (quotient i 2))))) 
-        (- 10 (/ p (add1 (quotient i 2))))))))
+    (let/cc return 
+      (define friends (person-friends (place-ref a-place x y)))
+      (when (empty? friends) (return 0))
+      (define neighbors (for/list ([p (place-around a-place x y)]) (person-name p)))
+      (for/sum ([f friends]
+                [p '(10 10 8 8 6 6 6 6 4 4 4 4 4 4 4 4 4 4 4 4)])
+        (let* ([i (or (index-of neighbors f) 20)])
+          ;(printf "~a ~a ~a ~a\n" (person-name (place-ref a-place x y)) f i (- 10 (/ p (add1 (quotient i 2))))) 
+          (- 10 (/ p (add1 (quotient i 2))))))))
 
 (define (energy a-place)
   (define-with a-place
@@ -204,6 +207,14 @@
 (module+ test
   (test-case
    "Calculate energy"
+   (test-begin
+    (define empty-place
+      (make-scenario 3 3
+                     ("Vazio" 0 0) ("Vazio" 1 0) ("Vazio" 2 0)
+                     ("Vazio" 0 1) ("Vazio" 1 1) ("Vazio" 2 1)
+                     ("Vazio" 0 2) ("Vazio" 1 2) ("Vazio" 2 2)))
+    (check equal? (energy-at empty-place 1 1) 8)
+    (check equal? (energy empty-place) 40))
    (test-begin
     (define max-energy
       (make-scenario 3 3

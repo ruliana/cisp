@@ -43,9 +43,6 @@
 (define-syntax-rule (define~>> (name args ...) body ...)
   (define (name args ... last-arg) (~>> last-arg body ...)))
 
-(define-syntax-rule (define/maker (name args ...) body ...)
-  (define name (generator (args ...) body ...)))
-
 (define-syntax-rule (define-with data (lets procs) ...)
   (define-values (lets ...) (values (procs data) ...)))
 
@@ -65,3 +62,13 @@
 ; Inclusive range =)
 (define (from-to n1 n2)
   (range n1 (add1 n2)))
+
+(define (in-head-x-tail seq)
+  (in-generator
+   #:arity 3
+   (let loop ([head #()]
+              [x (first seq)]
+              [tail (rest seq)])
+     (yield head x tail)
+     (unless (empty? tail)
+       (loop (conj head x) (first tail) (rest tail))))))
