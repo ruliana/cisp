@@ -11,7 +11,7 @@
 (define local-pheromone-coef (make-parameter 0.1))
 (define ant-population (make-parameter 10))
 (define decay (make-parameter 0.1))
-(define init-pher (make-parameter 1/700))
+(define init-pher (make-parameter (/ 1.0 700)))
 
 (define-values (people a-place)
   (let* ([pp (file->list "data/chairs.csv")]
@@ -31,6 +31,13 @@
   (define empty-place (make-place 2 2))
   (define ronie-at-1 (place-set empty-place 0 0 (first people))))
 
+; === Pheromones ===
+(define (pher-key a-place x y)
+  (list x y (person-name (place-ref a-place x y))))
+
+(define (pher-ref pheromones a-place x y)
+  (dict-ref pheromones (pher-key a-place x y) (init-pher)))
+
 ; All options possible to fill (x, y) in place.
 ; (list person) int int place (hash (list x y person-name) . value) -> (list choice)
 (define (choices remaining-people x y a-place [pheromones (hash)])
@@ -38,8 +45,8 @@
     (let* ([remaining (append head tail)]
            [new-place (place-set a-place x y p)]
            [e (energy-at new-place x y)]
-           [pher (dict-ref pheromones (list x y (person-name p)) (init-pher))]
-           [heur (expt (/ 1 e) (heuristic-coef))]
+           [pher (pher-ref pheromones new-place x y)]
+           [heur (expt (/ 1.0 (max 0.5 e)) (heuristic-coef))]
            [prob (* pher heur)])
       (choice prob new-place remaining))))
 
@@ -84,7 +91,7 @@
   (define a-place (state-place a-state))
   (for*/hash ([y (range (place-y a-place))]
               [x (range (place-x a-place))])
-    (let ([key (list x y (~> a-place (place-ref x y) person-name))])
+    (let ([key (pher-key a-place x y)])
       (values key
               (+
                (* (init-pher)
@@ -97,7 +104,7 @@
   (define e (state-energy a-state))
   (for*/hash ([y (range (place-y a-place))]
               [x (range (place-x a-place))])
-    (let ([key (list x y (~> a-place (place-ref x y) person-name))])
+    (let ([key (pher-key a-place x y)])
       (values key
               (+
                (* (decay) (/ 1.0 e))
@@ -132,7 +139,7 @@
     (let* ([current (solution people a-place)]
            [best* (if (< (state-energy current) (state-energy best)) current best)]
            [pheromones* (update-local pheromones current)])
-      (printf "~a ~a\n" steps (state-energy best*))
+      (printf "~a ~a ~a\n" steps (state-energy best*) (state-energy current))
       (cond [(> 1 steps) best*]
             [(> 1 ants) (loop (sub1 steps) (ant-population) (update-global pheromones* best*) best*)]
             [else (loop (sub1 steps) (sub1 ants) pheromones* best*)]))))
