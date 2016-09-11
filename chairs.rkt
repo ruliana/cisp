@@ -27,7 +27,7 @@
 
 ; == Struct protocol
 
-(struct person (name group x y friends) #:transparent)
+(struct person (name group x y friends) #:prefab)
 
 (define (wall x y)
   (person "Parede" 'wall x y empty))
@@ -78,7 +78,7 @@
 ; == Place protocol
 ; Who goes where.
 
-(struct place (x y positions) #:transparent)
+(struct place (x y positions) #:prefab)
 
 (define (make-place x y)
   (place x y (vector-allocate (* x y) (empty-space x y))))

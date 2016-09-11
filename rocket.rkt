@@ -3,6 +3,7 @@
 (require racket/function
          racket/match
          racket/string
+         racket/dict
          racket/format
          racket/generator
          racket/set
@@ -63,6 +64,7 @@
 (define (from-to n1 n2)
   (range n1 (add1 n2)))
 
+; Collections
 (define (in-head-x-tail seq)
   (in-generator
    #:arity 3
@@ -72,3 +74,15 @@
      (yield head x tail)
      (unless (empty? tail)
        (loop (conj head x) (first tail) (rest tail))))))
+
+
+(define (in-dicts dicts [on-failure #f])
+  (define keys (list->set (apply append (map dict-keys dicts))))
+  (in-generator #:arity 2
+                (for ([k keys])
+                  (let ([vs (for/list ([d dicts]) (dict-ref d k on-failure))])
+                    (yield k vs)))))
+
+(define ((dict-merger updater [on-failure #f]) . dicts)
+  (for/hash ([(k vs) (in-dicts dicts on-failure)])
+    (values k (apply updater vs))))
