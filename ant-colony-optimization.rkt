@@ -105,7 +105,7 @@
   (for/fold ([rslt (hash)])
             ([(k v) (in-dict pheromones)])
     (let ([new-v (* v (decay))])
-      (if (< v 0.000001) rslt
+      (if (< v 0.00001) rslt
           (dict-set rslt k new-v)))))
 
 (define (solution people a-place pheromones)
@@ -175,24 +175,32 @@
             [else (loop (- steps (number-of-places)) (- ants (number-of-places)) pheromones* best*)]))))
 
 (define (search people a-place)
-  (define (update pheromones current best)
+  (define (update pheromones currents best)
     (define e-best (state-energy best))
-    (define e-current (state-energy current))
-    (if (> e-current (+ e-best 10)) pheromones 
-        (apply (dict-merger + 0)
-               (list (update-local current e-best) pheromones))))
+    (define (good-enough a-state)
+      (< (state-energy a-state)
+         (+ e-best 10)))
+    (define goods (~>> currents
+                       ;(filter good-enough)
+                       (map (λ (x) (update-local x e-best)))))
+    (apply (dict-merger + 0)
+           (conj goods pheromones)))
   (let loop ([steps 10000]
-             [ants (ant-population)]
              [pheromones (hash)]
              [best (solution people a-place (hash))])
-    (let* ([current (solution people a-place pheromones)]
-           [best* (find-min (list current best) #:key state-energy)]
-           [pheromones* (update pheromones current best)])
-      (printf "~a ~a ~a ~a\n" steps ants (state-energy best*) (state-energy current))
-      (when (> 1 ants) (display-pher pheromones*))
-      (cond [(> 1 steps) best*]
-            [(> 1 ants) (loop (sub1 steps) (ant-population) (update-global pheromones* best*) best*)]
-            [else (loop (sub1 steps) (sub1 ants) pheromones* best*)]))))
+    (let* ([currents (for/list ([_i (in-range (ant-population))])
+                       (solution people a-place pheromones))]
+           [best* (find-min (conj currents best) #:key state-energy)]
+           [pheromones* (update pheromones currents best)])
+      (printf "~a ~a ~a\n"
+              steps
+              (state-energy best*)
+              (sequence->list (map state-energy currents)))
+      (display-pher pheromones*)
+      (if (> 1 steps) best*
+          (loop (sub1 steps)
+                (update-global pheromones* best*)
+                best*)))))
 
 (define (display-pher pheromones)
   (define x 5)
@@ -201,7 +209,8 @@
     (~>> (map person-name people)
          (map (λ (n) (cons n (dict-ref pheromones (list x y n) 0))))
          sequence->list
-         (sort _ > #:key cdr)))
+         (sort _ > #:key cdr)
+         (take 5)))
   (for ([v ps]
         #:when (> (cdr v) 0.000001))
     (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
