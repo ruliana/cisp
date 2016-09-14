@@ -2,7 +2,6 @@
 
 (require "chairs.rkt")
 (require racket/dict
-         racket/flonum
          (only-in racket/list shuffle)
          (prefix-in p: racket/place))
 
@@ -10,11 +9,8 @@
 
 ; === Language ===
 
-(define (flsum seq #:key [key identity])
-  (for/fold ([rslt 0.0])
-            ([it (in seq)])
-    (fl+ rslt (key it))))
-
+(define (sum seq #:key [key identity])
+  (for/sum ([it (in seq)]) (key it)))
 
 ; === Problem ===
 ;(module+ test (require rackunit))
@@ -44,13 +40,13 @@
 ; All options possible to fill (x, y) in place.
 ; (list person) int int place (hash (list x y person-name) . value) -> (list choice)
 (define (choices remaining-people x y a-place pheromones)
-  (define pher-ref (make-pher-ref pheromones))
+  (define pher-ref (λ (p) ((make-pher-ref pheromones) x y p)))
   (define pher-sum
-    (flsum remaining-people #:key (λ (p) (pher-ref x y p))))
+    (sum remaining-people #:key pher-ref))
   (for/list ([(head p tail) (in-head-x-tail remaining-people)])
     (let* ([remaining (append head tail)]
-           [pher (pher-ref x y p)]
-           [prob (if (= pher-sum 0.0) 1.0 (fl+ 0.001 (fl/ pher pher-sum)))])
+           [pher (pher-ref p)]
+           [prob (if (= pher-sum 0) 1 (+ 0.001 (/ pher pher-sum)))])
       (choice prob x y p a-place remaining))))
 
 #;(module+ test
@@ -68,12 +64,12 @@
 ; Random choice distributed by probability.
 ; (list choice) -> choice
 (define (random-choice choices)
-  (define sum (for/sum ([c (in choices)]) (choice-prob c)))
+  (define choice-sum (sum choices #:key choice-prob))
   (define rand (random))
   (let loop ([r rand]
              [c (first choices)]
              [cs (rest choices)])
-    (let ([prob (/ (choice-prob c) sum)])
+    (let ([prob (/ (choice-prob c) choice-sum)])
       (if (or (< r prob) (negative? r) (empty? cs)) c
           (loop (- r prob)
                 (first cs)
@@ -84,7 +80,7 @@
   (list x y (person-name a-person)))
 
 (define ((make-pher-ref pheromones) x y a-person)
-  (dict-ref pheromones (pher-key x y a-person) 0.0))
+  (dict-ref pheromones (pher-key x y a-person) 0))
 
 #;(module+ test
     (test-begin
@@ -95,14 +91,14 @@
   (define e-best (state-energy best))
   (define goods (~>> currents
                      (map (λ (x) (pheromone-gain x e-best)))))
-  (apply (dict-merger + 0.0)
+  (apply (dict-merger + 0)
          (conj goods pheromones)))
 
 (define (pheromone-gain a-state best)
   (define a-place (state-place a-state))
   (define energy (state-energy a-state))
   ; How much pheromone to put here:
-  (define pheromone-value (flexpt 2.0 (fl- best energy)))
+  (define pheromone-value (expt 2.0 (- best energy)))
   (define (key x y)
     (pher-key x y (place-ref a-place x y)))
   (define (not-empty-space? x y)
@@ -144,7 +140,9 @@
                            (choice-y choosen)
                            (choice-person choosen))
                 (choice-remaining-people choosen)))))
-  (state (->fl (energy pc)) pc))
+  (state (energy pc) pc))
+
+; === Distributed ===
 
 (define (make-solution-place people a-place)
   (define p
