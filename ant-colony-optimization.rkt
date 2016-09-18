@@ -2,6 +2,7 @@
 
 (require "chairs.rkt")
 (require racket/dict
+         match-plus
          (only-in racket/list shuffle)
          (prefix-in p: racket/place))
 
@@ -110,12 +111,35 @@
     ;(when (and (= 5 x) (= 5 y)) (let* ([k (key x y)]) (printf "~a: ~a\n" k v)))
     (values (key x y) pheromone-value)))
 
+(define decay-matrix
+  (matrix 3 3 #(0.0125 0.0125 0.0125
+                0.0125 0.9    0.0125
+                0.0125 0.0125 0.0125)))
+
+(define/match* (pheromones->matrices pheromones (state _ (place x-size y-size _)))
+  (define names (~>> pheromones dict-keys (map third) sequence->list list->set))
+  (define rslt (for/hash ([name (in names)])
+                 (values name (make-matrix y-size x-size))))
+  (for ([(k v) (in-dict pheromones)])
+    (match-define (list x y name) k)
+    (~> (ref rslt name) (matrix-set! y x v)))
+  rslt)
+
+(define (matrices->pheromones matrices)
+  (for*/fold ([rslt (hash)])
+             ([(name hsh) (in-dict matrices)]
+              [(y x v) (in-matrix hsh)])
+    (dict-set rslt (list x y name) v)))
+
+(define (matrices-convolution matrices)
+  (for/hash ([(name mtrx) (in-dict matrices)])
+    (values name (matrix-convolution mtrx decay-matrix))))
+
 (define (pheromone-decay pheromones a-state)
-  (for/fold ([rslt (hash)])
-            ([(k v) (in-dict pheromones)])
-    (let ([new-v (* v (decay))])
-      (if (< v 0.00001) rslt
-          (dict-set rslt k new-v)))))
+  (~> pheromones
+      (pheromones->matrices a-state)
+      (matrices-convolution)
+      (matrices->pheromones)))
 
 ; === Solution Builder ===
 
@@ -201,13 +225,20 @@
               steps
               (state-energy best*)
               (sequence->list (map state-energy currents)))
-      (display-pher pheromones*)
+      (display-pher pheromones* best*)
       (if (> 1 steps) best*
           (loop (sub1 steps)
                 (pheromone-decay pheromones* best*)
                 best*)))))
 
-(define (display-pher pheromones)
+(define (display-pher pheromones a-state)
+  (~> pheromones
+      (pheromones->matrices a-state)
+      (dict-ref "Bart")
+      (matrix-display (λ (v) (~r v #:min-width 9 #:precision '(= 3))))))
+  
+
+#;(define (display-pher pheromones)
   (define x 5)
   (define y 5)
   (define ps
