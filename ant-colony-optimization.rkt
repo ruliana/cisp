@@ -90,8 +90,10 @@
 
 (define (pheromomes-update pheromones currents best)
   (define e-best (state-energy best))
-  (define goods (~>> currents
-                     (map (λ (x) (pheromone-gain x e-best)))))
+  (define local-bests (take 1 (sort currents < #:key state-energy)))
+  (define local-best (state-energy (first local-bests)))
+  (define goods (~>> local-bests
+                     (map (λ (x) (pheromone-gain x local-best)))))
   (apply (dict-merger + 0)
          (conj goods pheromones)))
 
@@ -99,7 +101,7 @@
   (define a-place (state-place a-state))
   (define energy (state-energy a-state))
   ; How much pheromone to put here:
-  (define pheromone-value (expt 2.0 (- best energy)))
+  (define pheromone-value (+ 10 (- best energy)))
   (define (key x y)
     (pher-key x y (place-ref a-place x y)))
   (define (not-empty-space? x y)
@@ -112,9 +114,9 @@
     (values (key x y) pheromone-value)))
 
 (define decay-matrix
-  (matrix 3 3 #(0.0125 0.0125 0.0125
-                0.0125 0.9    0.0125
-                0.0125 0.0125 0.0125)))
+  (matrix 3 3 #(0.00625 0.00625 0.00625
+                        0.00625 0.9     0.00625
+                        0.00625 0.00625 0.00625)))
 
 (define/match* (pheromones->matrices pheromones (state _ (place x-size y-size _)))
   (define names (~>> pheromones dict-keys (map third) sequence->list list->set))
@@ -207,11 +209,19 @@
            [states (map first cphs)]
            [best* (find-min (conj states best) #:key state-energy)]
            [pheromones* (apply (dict-merger + 0) (conj (map second cphs) pheromones))])
-      (printf "~a ~a ~a ~a\n" steps ants (state-energy best*) (sequence->list (map state-energy states)))
+      (printf "~a ~a ~a ~a\n" steps ants
+              (state-energy best*)
+              (sequence->list (map state-energy states)))
       (when (> 1 ants) (display-pher pheromones*))
       (cond [(> 1 steps) best*]
-            [(> 1 ants) (loop (- steps (number-of-places)) (ant-population) (pheromone-decay pheromones* best*) best*)]
-            [else (loop (- steps (number-of-places)) (- ants (number-of-places)) pheromones* best*)]))))
+            [(> 1 ants) (loop (- steps (number-of-places))
+                              (ant-population)
+                              (pheromone-decay pheromones* best*)
+                              best*)]
+            [else (loop (- steps (number-of-places))
+                        (- ants (number-of-places))
+                        pheromones*
+                        best*)]))))
 
 (define (search people a-place)
   (let loop ([steps 10000]
@@ -236,20 +246,20 @@
       (pheromones->matrices a-state)
       (dict-ref "Bart")
       (matrix-display (λ (v) (~r v #:min-width 9 #:precision '(= 3))))))
-  
+
 
 #;(define (display-pher pheromones)
-  (define x 5)
-  (define y 5)
-  (define ps
-    (~>> (map person-name people)
-         (map (λ (n) (cons n (dict-ref pheromones (list x y n) 0))))
-         sequence->list
-         (sort _ > #:key cdr)
-         (take 5)))
-  (for ([v ps]
-        #:when (> (cdr v) 0.000001))
-    (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
+    (define x 5)
+    (define y 5)
+    (define ps
+      (~>> (map person-name people)
+           (map (λ (n) (cons n (dict-ref pheromones (list x y n) 0))))
+           sequence->list
+           (sort _ > #:key cdr)
+           (take 5)))
+    (for ([v ps]
+          #:when (> (cdr v) 0.000001))
+      (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
 
 (define (main)
   (~> (search people a-place) state-place display-place))

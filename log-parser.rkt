@@ -1,5 +1,6 @@
 #lang s-exp "rocket.rkt"
-(require plot)
+(require plot
+         plot/no-gui)
 (provide main)
 
 (define (call-with-input-output-file input-path output-path proc)
@@ -23,23 +24,29 @@
       (regexp-match #px"^\\d+\\s+(\\d+)\\s+\\((\\d+(?:\\s+\\d+)*)\\)" line))
     (list (string->number best) (average evals))))
 
-(define (read-and-plot title filename)
+(define (read-and-plot input-filename [output-filename #f])
   (define (indexed proc data)
     (for/list ([x (in-naturals)]
                [d data])
       (list x (proc d))))
-  (given (data (call-with-input-file* filename process #:mode 'text))
+  (given (data (call-with-input-file* input-filename process #:mode 'text))
          (best-line (indexed first data))
          (avg-line (indexed second data)))
-  (plot-data title best-line avg-line))
+  (plot-data best-line avg-line output-filename))
 
-(define (plot-data title best average)
-  (plot (list (lines best #:color 'black #:label "Melhor" #:style 'short-dash)
-              (lines average #:color 'black #:label "Média"))
-        #:title title
-        #:x-label "Iterações"
-        #:y-label "Fitness"
-        #:legend-anchor 'bottom-right))
+(define (plot-data best average [output-filename #f])
+  (define data (list (lines best #:color 'black #:label "Melhor" #:style 'short-dash)
+                     (lines average #:color 'black #:label "Média")))
+  (if output-filename
+      (plot-file data
+                 output-filename
+                 #:x-label "Iterações"
+                 #:y-label "Fitness"
+                 #:legend-anchor 'bottom-right)
+      (plot data
+            #:x-label "Iterações"
+            #:y-label "Fitness"
+            #:legend-anchor 'bottom-right)))
 
 (define (logfile? path)
   (regexp-match? #px"\\.log$" path))
@@ -47,5 +54,5 @@
 (define (main)
   (for ([filename (in-directory ".")]
         #:when (logfile? filename))
-    (read-and-plot filename)))
+    (read-and-plot filename (format "/tmp/~a.png" filename))))
 
