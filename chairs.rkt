@@ -17,7 +17,9 @@
          display-place
          ; Cost function / Fitness function
          energy-at
-         energy)
+         energy
+         people
+         the-place)
 
 (module+ test (require rackunit))
 
@@ -156,6 +158,8 @@
       (y person-y))
     (place-set rslt x y a-person)))
 
+(define (random-place people) #t)
+
 (define (name-at a-place x y)
   (~> a-place (place-ref x y) person-name))
 
@@ -240,3 +244,14 @@
                      ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
     (check equal? (energy-at no-energy  1 1) 0)
     (check equal? (energy no-energy) 0))))
+
+
+; == Initial parameters
+
+(define-values (people the-place)
+  (let* ([pp (file->list "data/chairs.csv")]
+         [pc (make-place 10 10)]
+         [pc* (distribute-people pc (take 10 pp))]
+         [pp* (sequence->list (drop 10 pp))])
+    (values (make-parameter pp*)
+            (make-parameter pc*))))

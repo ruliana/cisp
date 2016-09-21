@@ -8,24 +8,12 @@
 
 (provide main)
 
-; === Language ===
-
-(define (sum seq #:key [key identity])
-  (for/sum ([it (in seq)]) (key it)))
-
 ; === Problem ===
 ;(module+ test (require rackunit))
 
 (define ant-population (make-parameter 21))
 (define decay (make-parameter 0.9))
 (define number-of-places (make-parameter 3))
-
-(define-values (people a-place)
-  (let* ([pp (file->list "data/chairs.csv")]
-         [pc (make-place 10 10)]
-         [pc* (distribute-people pc (take 10 pp))]
-         [pp* (sequence->list (drop 10 pp))])
-    (values pp* pc*)))
 
 (struct choice (prob x y person place remaining-people) #:transparent)
 
@@ -262,4 +250,4 @@
       (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
 
 (define (main)
-  (~> (search people a-place) state-place display-place))
+  (~> (search (people) (the-place)) state-place display-place))

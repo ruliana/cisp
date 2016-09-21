@@ -2,12 +2,12 @@
 ; Those are libraries, functions and macros I use on my own projects
 (require racket/function
          racket/match
+         threading
          racket/string
-         racket/dict
          racket/format
          racket/generator
+         racket/dict
          racket/set
-         threading
          data/collection
          match-plus
          (only-in racket/list
@@ -71,6 +71,9 @@
 
 ; Collections
 
+(define (sum seq #:key [key identity])
+  (for/sum ([it (in seq)]) (key it)))
+
 (define (in-head-x-tail seq)
   (in-generator
    #:arity 3
@@ -81,7 +84,11 @@
      (unless (empty? tail)
        (loop (conj head x) (first tail) (rest tail))))))
 
-
+; Iterator for N dicts, at each iteration a key and list
+; of values is given. The list of values are the ones
+; found under the same key in all dicts. If any doesn't
+; have the key, the "on-failure" value is given in the
+; result.
 (define (in-dicts dicts [on-failure #f])
   (define keys (list->set (apply append (map dict-keys dicts))))
   (in-generator #:arity 2
