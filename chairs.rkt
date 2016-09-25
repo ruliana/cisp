@@ -1,5 +1,7 @@
 #lang s-exp "rocket.rkt"
 
+(require (only-in racket/list shuffle))
+
 (provide (struct-out person)
          make-person
          wall
@@ -11,6 +13,7 @@
          make-place
          place-ref
          place-set
+         place-random
          place-random-change
          place-around
          distribute-people
@@ -158,7 +161,16 @@
       (y person-y))
     (place-set rslt x y a-person)))
 
-(define (random-place people) #t)
+(define (place-random)
+  (define place (the-place))
+  (define-values (_ps rslt)
+    (for*/fold ([ps (shuffle (people))]
+                [rslt place])
+               ([x (range 1 (place-x place))]
+                [y (place-y place)])
+      (define p (first ps))
+      (values (rest ps) (place-set rslt x y p))))
+  rslt)
 
 (define (name-at a-place x y)
   (~> a-place (place-ref x y) person-name))
