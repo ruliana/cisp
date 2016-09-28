@@ -95,6 +95,16 @@
   (define pos (xy->position a-place x y))
   (~> a-place place-positions (ref pos)))
 
+(define (place-slice a-place x1 y1 x2 y2)
+  (given [width (add1 (- x2 x1))]
+         [height (add1 (- y2 y1))]
+         [empty-place (make-place width height)])
+  (for*/fold ([rslt empty-place])
+             ([x (from-to x1 x2)]
+              [y (from-to y1 y2)])
+    (given [v (place-ref a-place x y)])
+    (place-set rslt (- x x1) (- y y1) v)))
+
 (define (place-set a-place x y value)
   (define pos (xy->position a-place x y))
   (define new-positions (~> a-place place-positions (set-nth pos value)))
@@ -166,8 +176,8 @@
   (define-values (_ps rslt)
     (for*/fold ([ps (shuffle (people))]
                 [rslt place])
-               ([x (range 1 (place-x place))]
-                [y (place-y place)])
+               ([x (in-range 0 (place-x place))]
+                [y (in-range 1 (place-y place))])
       (define p (first ps))
       (values (rest ps) (place-set rslt x y p))))
   rslt)

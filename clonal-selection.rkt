@@ -16,13 +16,16 @@
 
 ; Algorithm
 (define (clonal-selection)
-  (let loop ([iteration (max-iterations)]
-             [population (initialize-population)])
-    (cond
-      [(zero? iteration) population]     ; stop condition
-      [(solution? population) population] ; stop condition
-      [else (loop (sub1 iteration)
-                  (select-and-mutate iteration population))])))
+  (define rslt #f)
+  (with-handlers ([exn:break? (λ (exn) rslt)])
+    (let loop ([iteration (max-iterations)]
+               [population (initialize-population)])
+      (set! rslt (first population))
+      (cond
+        [(zero? iteration) population]     ; stop condition
+        [(solution? population) population] ; stop condition
+        [else (loop (sub1 iteration)
+                    (select-and-mutate iteration population))]))))
 
 (define (select-and-mutate iteration population)
   (let* ([population-best (select-best (population-size-best) population)]
@@ -93,4 +96,5 @@
          [missing (- (population-size) current-size)])
   (append population (make-population-random missing)))
 
-(define main clonal-selection)
+(define (main)
+  (display-place (state-place (clonal-selection))))

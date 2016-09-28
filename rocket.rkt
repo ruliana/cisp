@@ -50,7 +50,7 @@
   (define (name args ... last-arg) (~>> last-arg body ...)))
 
 (define-syntax-rule (define-with data (lets procs) ...)
-  (define-values (lets ...) (values (procs data) ...)))
+  (define-values (lets ...) (values (curry procs data) ...)))
 
 (define (vector-allocate size elem)
   (vector->immutable-vector (make-vector size elem)))
