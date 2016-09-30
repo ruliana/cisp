@@ -7,9 +7,9 @@
 
 ; Parameters
 (define max-iterations (make-parameter 10000))
-(define population-size (make-parameter 25))
-(define population-size-best (make-parameter 10))
-(define clone-rate (make-parameter 10))
+(define population-size (make-parameter 20))
+(define population-size-best (make-parameter 5))
+(define clone-rate (make-parameter 5))
 
 ; Structs
 (struct clones (number original) #:transparent)
@@ -22,8 +22,8 @@
                [population (initialize-population)])
       (set! rslt (first population))
       (cond
-        [(zero? iteration) population]     ; stop condition
-        [(solution? population) population] ; stop condition
+        [(zero? iteration) (first population)]      ; stop condition
+        [(solution? population) (first population)] ; stop condition
         [else (loop (sub1 iteration)
                     (select-and-mutate iteration population))]))))
 

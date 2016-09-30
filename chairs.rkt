@@ -1,6 +1,11 @@
 #lang s-exp "rocket.rkt"
 
-(require (only-in racket/list shuffle))
+(require (only-in racket/list shuffle)
+         racket/dict
+         racket/class
+         racket/draw
+         (only-in racket/gui image-snip%)
+         "colors.rkt")
 
 (provide (struct-out person)
          make-person
@@ -219,7 +224,9 @@
       (for/sum ([f friends]
                 [p '(10 10 8 8 6 6 6 6 4 4 4 4 4 4 4 4 4 4 4 4)])
         (let* ([i (or (index-of neighbors f) 20)])
-          ;(printf "~a ~a ~a ~a\n" (person-name (place-ref a-place x y)) f i (- 10 (/ p (add1 (quotient i 2))))) 
+          #;(printf "~a ~a ~a ~a\n"
+                    (person-name (place-ref a-place x y)) f i
+                    (- 10 (/ p (add1 (quotient i 2))))) 
           (- 10 (/ p (add1 (quotient i 2))))))))
 
 (define (energy a-place)
@@ -254,19 +261,92 @@
     (check equal? (energy max-energy) 40))
    (test-begin
     (define no-energy
-      (make-scenario 3 3
-                     ("Ronie"  0 0 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
-                     ("Cris"   1 0 "Ronie" "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
-                     ("Sato"   2 0 "Cris"  "Ronie" "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
-                     ("Johnny" 0 1 "Cris"  "Sato"  "Ronie"  "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
-                     ("Ceará"  1 1 "Cris"  "Sato"  "Johnny" "Ronie" "Luis"  "Pierri" "Felipe" "Rubens")
-                     ("Luis"   2 1 "Cris"  "Sato"  "Johnny" "Ceará" "Ronie" "Pierri" "Felipe" "Rubens")
-                     ("Pierri" 0 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Ronie"  "Felipe" "Rubens")
-                     ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
-                     ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
+      (make-scenario
+       3 3
+       ("Ronie"  0 0 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+       ("Cris"   1 0 "Ronie" "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+       ("Sato"   2 0 "Cris"  "Ronie" "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+       ("Johnny" 0 1 "Cris"  "Sato"  "Ronie"  "Ceará" "Luis"  "Pierri" "Felipe" "Rubens")
+       ("Ceará"  1 1 "Cris"  "Sato"  "Johnny" "Ronie" "Luis"  "Pierri" "Felipe" "Rubens")
+       ("Luis"   2 1 "Cris"  "Sato"  "Johnny" "Ceará" "Ronie" "Pierri" "Felipe" "Rubens")
+       ("Pierri" 0 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Ronie"  "Felipe" "Rubens")
+       ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
+       ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
     (check equal? (energy-at no-energy  1 1) 0)
     (check equal? (energy no-energy) 0))))
 
+#;(module+ test
+    (test-case
+     "Calculate energy"
+     (test-begin
+      (define scenario-421 (read-scenario "data/chairs-421.csv"))
+      (check equal? 421 (energy scenario-421)))))
+
+; == Test Helpers
+
+(define (read-scenario filename)
+  (~>> (tabfile->list filename)
+       (merge-people (people))
+       (distribute-people (the-place))))
+
+(define (tabfile->list filename)
+  (call-with-input-file filename read-table-file))
+
+(define (read-table-file file)
+  (for/fold ([rslt (hash)])
+            ([line (in-lines file)]
+             [y (in-naturals)])
+    (for/fold ([rslt rslt])
+              ([col (in (reverse (string-split line "\t")))]
+               [x (in-naturals)])
+      (dict-set rslt col (list x y)))))
+
+(define (merge-people people-list to-override)
+  (for/list ([p people-list])
+    (match-define (list x y) (dict-ref to-override (person-name p)))
+    (struct-copy person p [x x] [y y])))
+
+(define (people-by-energy a-place)
+  (define people-energy
+    (for*/list ([x (in-range (place-x a-place))]
+                [y (in-range (place-y a-place))])
+      (cons (name-at a-place x y) (energy-at a-place x y))))
+  (sort people-energy < #:key cdr))
+
+(define (draw-heat-map a-place)
+  (given [width 100]
+         [height 30]
+         [font-height 12]
+         [target (make-bitmap (* 10 width) (* 10 height))]
+         [dc (new bitmap-dc% [bitmap target])]
+         [color-step (/ 1/3 8)]
+         [brushes (reverse (for/list ([x (in-range 9)]
+                                      [color (in-range 0 1 color-step)])
+                             (define rgb (map (λ (c) (inexact->exact (ceiling (* c 255))))
+                                              (hsl->rgb (list color 1 0.5))))
+                             (new brush% [color (apply make-object color% rgb)])))]
+         [send-text (λ (dc x y text)
+                      (send dc set-clipping-rect x y (- width 3) (sub1 height))
+                      (send dc draw-text text
+                            (+ x 3)
+                            (+ y (ceiling (/ font-height 2))))
+                      (send dc set-clipping-region #f))])
+  
+  (send dc set-font (make-font #:size font-height))
+  (for* ([y* (in-range (place-y a-place))]
+         [x* (in-range (place-x a-place))])
+    (given [x (- (* 9 width) (* width x*))] ; revert x
+           [y (* height y*)]
+           [e (energy-at a-place x* y*)]
+           [name (name-at a-place x* y*)])
+    (send dc set-brush (ref brushes e))
+    (send dc draw-rectangle x y (sub1 width) (sub1 height))
+    (send-text dc x y name))
+  (make-object image-snip% target))
+
+(define (do-it)
+  (define a-place (read-scenario "data/experiment01.tsv"))
+  (draw-heat-map a-place))
 
 ; == Initial parameters
 
