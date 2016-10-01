@@ -1,6 +1,9 @@
 #lang s-exp "rocket.rkt"
 
 (require "chairs.rkt"
+         racket/class
+         racket/gui/base
+         racket/draw
          (only-in racket/list make-list))
 
 (provide main)
@@ -8,19 +11,20 @@
 ; Parameters
 (define max-iterations (make-parameter 10000))
 (define population-size (make-parameter 20))
-(define population-size-best (make-parameter 5))
-(define clone-rate (make-parameter 5))
+(define population-size-best (make-parameter 10))
+(define clone-rate (make-parameter 3))
 
 ; Structs
 (struct clones (number original) #:transparent)
 
 ; Algorithm
-(define (clonal-selection)
+(define (clonal-selection [updater #f])
   (define rslt #f)
   (with-handlers ([exn:break? (λ (exn) rslt)])
     (let loop ([iteration (max-iterations)]
                [population (initialize-population)])
       (set! rslt (first population))
+      (when updater (updater population iteration))
       (cond
         [(zero? iteration) (first population)]      ; stop condition
         [(solution? population) (first population)] ; stop condition
@@ -33,9 +37,6 @@
          [mutants (mutate clones)]
          #;[best-of-all (select-best (population-size) mutants)]
          #;[population-new (complete-with-random best-of-all)])
-    (printf "~a ~a\n"
-            (~r iteration #:min-width 5)
-            (~>> population-best (map state-energy) sequence->list))
     mutants))
 
 ; State
@@ -97,4 +98,14 @@
   (append population (make-population-random missing)))
 
 (define (main)
-  (display-place (state-place (clonal-selection))))
+  (define canvas (create-canvas (the-place)))
+  (define (update population iteration)
+    (define best (state-place (first population)))
+    (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
+    (sleep/yield 0.02)
+    (printf "~a ~a\n"
+            (~r iteration #:min-width 5)
+            (~>> population (map state-energy) sequence->list)))
+  (define (updater population iteration)
+    (update population iteration))
+  (display-place (state-place (clonal-selection updater))))
