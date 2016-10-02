@@ -23,9 +23,13 @@
          name-at
          friends-at
          ; Cost function / Fitness function
-         (rename-out [energy-at1 energy-at]
-                     [energy1 energy]
+         (rename-out [energy-at2 energy-at]
+                     [energy2 energy]
                      [place-random-change2 place-random-change])
+         energy-at1
+         energy1
+         energy-at2
+         energy2
          place-random-change1
          place-random-change2
          place-random-change3
@@ -332,15 +336,15 @@
        ("Pierri" 0 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Ronie"  "Felipe" "Rubens")
        ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
        ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
-    (check equal? (energy-at1 no-energy  1 1) 1/2)
-    (check equal? (energy1 no-energy) 9/2))))
+    (check equal? (energy-at1 no-energy  1 1) 0)
+    (check equal? (energy1 no-energy) 4))))
 
 (module+ test
   (test-case
    "Calculate energy on sample"
    (test-begin
     (define scenario-422 (read-scenario "data/experiment01.tsv"))
-    (check equal? 225/8 (energy1 scenario-422)))))
+    (check equal? 19693867/556920 (energy1 scenario-422)))))
 
 ; -- Energy Manhattan distance model
 
@@ -393,31 +397,6 @@
     (check equal? (energy-at2 some-energy 1 2) 0)
     (check equal? (energy2 some-energy) 17/12))))
 
-; -- Energy Manhattan distance + importance
-
-(define (energy-at3 a-place x y)
-  (define (energy-for friends)
-    (for/sum ([i (in-naturals 1)]
-              [f (in friends)])
-      (define pos (dict-ref (place-index a-place) f #f))
-      (match pos
-        [(cons x* y*)
-         (/ (+ (abs (- x x*))
-               (abs (- y y*)))
-            i)]
-        [_ 0])))
-  (given [friends (friends-at a-place x y)]
-         [e (energy-for friends)])
-  (if (zero? e) 0
-      (- 1 (/ (length friends) e))))
-
-(define (energy3 a-place)
-  (define-with a-place
-    (max-x place-x)
-    (max-y place-y))
-  (for*/sum ([x (in-range 0 max-x)]
-             [y (in-range 0 max-y)])
-    (energy-at3 a-place x y)))
 
 ; == Load Test Data Helpers
 

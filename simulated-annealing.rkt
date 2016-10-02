@@ -2,6 +2,8 @@
 
 (require "chairs.rkt")
 
+(provide main)
+
 ; == Simulated Annealing
 
 (struct state (energy data))
@@ -61,7 +63,8 @@
 
 ; == Using (remove it later)
 
-(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
-(define rslt (simulated-annealing a-place))
-(displayln (state-energy rslt))
-(display-place (state-data rslt))
+(define (main)
+  ;(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
+  (define rslt (simulated-annealing (place-random)))
+  (displayln (state-energy rslt))
+  (display-place (state-data rslt)))

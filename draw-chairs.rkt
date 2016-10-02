@@ -48,7 +48,7 @@
   (send dc set-font (make-font #:size font-height))
   (for* ([y* (in-range max-y)]
          [x* (in-range max-x)])
-    (define e (energy-at a-place x* y*))
+    (define e (energy-at2 a-place x* y*))
     (~> energies (vector-ref x*) (vector-set! y* e)))
   (for* ([y* (in-range max-y)]
          [x* (in-range max-x)])
