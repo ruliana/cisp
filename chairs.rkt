@@ -1,11 +1,8 @@
 #lang s-exp "rocket.rkt"
 
 (require (only-in racket/list shuffle)
-         racket/dict
-         racket/class
-         racket/draw
-         (only-in racket/gui image-snip% frame% canvas%)
-         "colors.rkt")
+         math/distributions
+         racket/dict)
 
 (provide (struct-out person)
          make-person
@@ -19,18 +16,17 @@
          place-ref
          place-set
          place-random
-         place-random-change
          place-around
          distribute-people
          display-place
          ; Cost function / Fitness function
-         (rename-out [energy-at2 energy-at]
-                     [energy2 energy])
+         (rename-out [energy-at1 energy-at]
+                     [energy1 energy]
+                     [place-random-change2 place-random-change])
          people
          the-place
-         create-canvas
-         draw-heat-map-on-dc
-         draw-heat-map-on-bitmap)
+         name-at
+         read-scenario)
 
 (module+ test (require rackunit))
 
@@ -113,20 +109,49 @@
                [positions new-positions]
                [index new-index]))
 
-(define walls (sequence->list (from-to 0 9)))
-(define (place-random-change a-place)
-  (define positions (place-positions a-place))
-  (define rnd (~> positions length randoms))
-  (define (pos+per #:tabu [tabu empty])
-    (define pos (~>> rnd
-                     (filter (negate (λ= tabu)))
-                     first))
-    (define per (ref positions pos))
-    (values pos per))
-  (let*-values ([(p1 v1) (pos+per #:tabu walls)]
-                [(p2 v2) (pos+per #:tabu (cons p1 walls))]
-                [(new-positions) (~> positions (set-nth p1 v2) (set-nth p2 v1))])
-    (struct-copy place a-place [positions new-positions])))
+(define (place-xy-for a-place name)
+  (~> a-place place-index (dict-ref name #f)))
+
+(define (place-replace a-place name-a name-b)
+  (match-let* ([(cons x1 y1) (place-xy-for a-place name-a)]
+               [(cons x2 y2) (place-xy-for a-place name-b)]
+               [a (place-ref a-place x1 y1)]
+               [b (place-ref a-place x2 y2)])
+    (~> a-place (place-set x1 y1 b) (place-set x2 y2 a))))
+
+(define (place-random-change1 a-place)
+  (define people (~>> a-place
+                      place-index
+                      dict-keys
+                      shuffle
+                      (take 2)))
+  (place-replace a-place (first people) (second people)))
+
+(define (place-random-change2 a-place)
+  (define-values (people energies)
+    (for*/fold ([people empty]
+                [energies empty])
+               ([x (in-range (place-x a-place))]
+                [y (in-range (place-y a-place))])
+      (values (conj people (name-at a-place x y))
+              (conj energies (energy-at2 a-place x y)))))
+  (define dist (discrete-dist people energies))
+  (let loop ()
+    (let ([choosen (sample dist 2)])
+      (if (equal? (first choosen) (second choosen))
+          (loop)
+          (place-replace a-place (first choosen) (second choosen))))))
+
+(define (place-random)
+  (define place (the-place))
+  (define-values (_ps rslt)
+    (for*/fold ([ps (shuffle (people))]
+                [rslt place])
+               ([x (in-range 0 (place-x place))]
+                [y (in-range 1 (place-y place))])
+      (define p (first ps))
+      (values (rest ps) (place-set rslt x y p))))
+  rslt)
 
 (define (positions-around a-place x y)
   (define row-below (max (sub1 y) 0))
@@ -188,17 +213,6 @@
       (y person-y))
     (place-set rslt x y a-person)))
 
-(define (place-random)
-  (define place (the-place))
-  (define-values (_ps rslt)
-    (for*/fold ([ps (shuffle (people))]
-                [rslt place])
-               ([x (in-range 0 (place-x place))]
-                [y (in-range 1 (place-y place))])
-      (define p (first ps))
-      (values (rest ps) (place-set rslt x y p))))
-  rslt)
-
 (define (name-at a-place x y)
   (~> a-place (place-ref x y) person-name))
 
@@ -223,12 +237,13 @@
 ; -- Energy simple model
 
 (define (energy-at1 a-place x y)
-  (define friends (person-friends (place-ref a-place x y)))
-  (define neighbors (for/list ([p (place-around a-place x y)]) (person-name p)))
-  (if (empty? friends) (length neighbors)
-      (for/fold ([e (length neighbors)])
-                ([f (in friends)])
-        (- e (if (member f neighbors) 1 0)))))
+  (given [friends (person-friends (place-ref a-place x y))]
+         [neighbors (for/list ([p (place-around a-place x y)]) (person-name p))]
+         [energy (if (empty? friends) (length neighbors)
+                     (for/fold ([e (length neighbors)])
+                               ([f (in friends)])
+                       (- e (if (member f neighbors) 1 0))))])
+  (/ energy 8))
 
 (define (energy1 a-place)
   (define-with a-place
@@ -247,8 +262,8 @@
                      ("Vazio" 0 0) ("Vazio" 1 0) ("Vazio" 2 0)
                      ("Vazio" 0 1) ("Vazio" 1 1) ("Vazio" 2 1)
                      ("Vazio" 0 2) ("Vazio" 1 2) ("Vazio" 2 2)))
-    (check equal? (energy-at1 empty-place 1 1) 8)
-    (check equal? (energy1 empty-place) 40))
+    (check equal? (energy-at1 empty-place 1 1) 1)
+    (check equal? (energy1 empty-place) 5))
    (test-begin
     (define max-energy
       (make-scenario 3 3
@@ -256,10 +271,10 @@
                      ("Johnny" 0 1) ("Ceará"  1 1) ("Luis"   2 1)
                      ("Pierri" 0 2) ("Felipe" 1 2) ("Rubens" 2 2)))
     
-    (check equal? (energy-at1 max-energy 1 1) 8)
-    (check equal? (energy-at1 max-energy 0 0) 3)
-    (check equal? (energy-at1 max-energy 1 0) 5)
-    (check equal? (energy1 max-energy) 40))
+    (check equal? (energy-at1 max-energy 1 1) 1)
+    (check equal? (energy-at1 max-energy 0 0) 3/8)
+    (check equal? (energy-at1 max-energy 1 0) 5/8)
+    (check equal? (energy1 max-energy) 5))
    (test-begin
     (define no-energy
       (make-scenario
@@ -280,18 +295,26 @@
   (test-case
    "Calculate energy on sample"
    (test-begin
-    (define scenario-421 (read-scenario "data/experiment01.tsv"))
-    (check equal? 421 (energy1 scenario-421)))))
+    (define scenario-422 (read-scenario "data/experiment01.tsv"))
+    (check equal? 211/4 (energy1 scenario-422)))))
 
 ; -- Energy Manhattan distance model
 
 (define (energy-at2 a-place x y)
+  (define (energy-for friends)
+    (for/sum ([f (in friends)])
+      (define pos (dict-ref index f #f))
+      (match pos
+        [(cons x* y*)
+         (+ (abs (- x x*))
+            (abs (- y y*)))]
+        [_ 0])))
   (given [friends (person-friends (place-ref a-place x y))]
-         [index (place-index a-place)])
-  (for/sum ([f (in friends)])
-    (match-define (cons x* y*) (dict-ref index f))
-    (+ (abs (- x x*))
-       (abs (- y y*)))))
+         [index (place-index a-place)]
+         [valids (set-intersect friends (dict-keys index))]
+         [e (energy-for friends)])
+  (if (zero? e) 0
+      (- 1 (/ (length valids) e))))
 
 (define (energy2 a-place)
   (define-with a-place
@@ -317,12 +340,13 @@
       (make-scenario 3 3
                      ("Ronie"  0 0 "Rubens") ("Cris"   1 0 "Rubens" "Pierri") ("Sato"   2 0)
                      ("Johnny" 0 1)          ("Ceará"  1 1 "Cris" "Felipe")   ("Luis"   2 1)
-                     ("Pierri" 0 2)          ("Felipe" 1 2)                   ("Rubens" 2 2)))
+                     ("Pierri" 0 2)          ("Felipe" 1 2 "Pierri" "Rubens") ("Rubens" 2 2)))
     
-    (check equal? (energy-at2 some-energy 0 0) 4)
-    (check equal? (energy-at2 some-energy 1 0) 6)
-    (check equal? (energy-at2 some-energy 1 1) 2)
-    (check equal? (energy2 some-energy) 12))))
+    (check equal? (energy-at2 some-energy 0 0) 3/4)
+    (check equal? (energy-at2 some-energy 1 0) 2/3)
+    (check equal? (energy-at2 some-energy 1 1) 0)
+    (check equal? (energy-at2 some-energy 1 2) 0)
+    (check equal? (energy2 some-energy) 17/12))))
 
 ; == Load Test Data Helpers
 
@@ -354,72 +378,6 @@
                 [y (in-range (place-y a-place))])
       (cons (name-at a-place x y) (energy-at1 a-place x y))))
   (sort people-energy < #:key cdr))
-
-; == Visualization
-
-(define cell-width (make-parameter 100))
-(define cell-height (make-parameter 30))
-
-(define color-step (/ 1/3 8))
-(define brushes
-  (reverse (for/list ([x (in-range 9)]
-                      [color (in-range 0 1 color-step)])
-             (define rgb (map (λ (c) (inexact->exact (ceiling (* c 255))))
-                              (hsl->rgb (list color 1 0.5))))
-             (new brush% [color (apply make-object color% rgb)]))))
-
-(define (draw-heat-map-on-bitmap a-place)
-  (given [width (cell-width)]
-         [height (cell-height)]
-         [target (make-bitmap (* 10 width) (* 10 height))]
-         [dc (new bitmap-dc% [bitmap target])])
-  (draw-heat-map-on-dc dc a-place)
-  (make-object image-snip% target))
-
-(define (draw-heat-map-on-dc dc a-place)
-  (given [width (cell-width)]
-         [height (cell-height)]
-         [font-height 12]
-         [send-text (λ (dc x y text)
-                      (send dc set-clipping-rect x y (- width 3) (sub1 height))
-                      (send dc draw-text text
-                            (+ x 3)
-                            (+ y (ceiling (/ font-height 2))))
-                      (send dc set-clipping-region #f))])
-  
-  (send dc set-font (make-font #:size font-height))
-  (for* ([y* (in-range (place-y a-place))]
-         [x* (in-range (place-x a-place))])
-    (given [x (- (* 9 width) (* width x*))] ; revert x
-           [y (* height y*)]
-           [e (energy-at1 a-place x* y*)]
-           [name (name-at a-place x* y*)])
-    (send dc set-brush (ref brushes e))
-    (send dc draw-rectangle x y (sub1 width) (sub1 height))
-    (send-text dc x y name)))
-
-
-(define (do-it-bitmap)
-  ;(define a-place (read-scenario "data/experiment01.tsv"))
-  (draw-heat-map-on-bitmap (distribute-people (the-place) (people))))
-
-(define (do-it-frame)
-  (given [a-place (read-scenario "data/experiment01.tsv")]
-         [canvas (create-canvas a-place)]
-         [dc (send canvas get-dc)])
-  (draw-heat-map-on-dc dc (distribute-people (the-place) (people))))
-
-(define (create-canvas a-place)
-  (define frame (new frame%
-                     [label "Example"]
-                     [width 1000]
-                     [height 300]))
-  (define canvas (new canvas% [parent frame]
-                      [paint-callback
-                       (lambda (canvas dc)
-                         (draw-heat-map-on-dc dc a-place))]))
-  (send frame show #t)
-  canvas)
 
 ; == Initial parameters
 

@@ -1,6 +1,7 @@
 #lang s-exp "rocket.rkt"
 
 (require "chairs.rkt"
+         "draw-chairs.rkt"
          racket/class
          racket/gui/base
          racket/draw
@@ -105,7 +106,7 @@
     (sleep/yield 0.02)
     (printf "~a ~a\n"
             (~r iteration #:min-width 5)
-            (~>> population (map state-energy) sequence->list)))
+            (~>> population (map state-energy) first exact->inexact)))
   (define (updater population iteration)
     (update population iteration))
   (display-place (state-place (clonal-selection updater))))
