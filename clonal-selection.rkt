@@ -5,6 +5,7 @@
          racket/class
          racket/gui/base
          racket/draw
+         racket/random
          (only-in racket/list make-list))
 
 (provide main)
@@ -88,9 +89,11 @@
 
 (define (mutate-element element mutations)
   (given [a-place (state-place element)]
+         [mutagenes (list place-random-change1 place-random-change2 place-random-change3)]
          [mutant  (for/fold ([rslt a-place])
                             ([_i (range mutations)])
-                    (place-random-change rslt))])
+                    (let ([mutagene (random-ref mutagenes)])
+                      (mutagene rslt)))])
   (state (energy mutant) mutant))
 
 (define (complete-with-random population)
@@ -103,7 +106,7 @@
   (define (update population iteration)
     (define best (state-place (first population)))
     (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
-    (sleep/yield 0.02)
+    (sleep/yield 0.05)
     (printf "~a ~a\n"
             (~r iteration #:min-width 5)
             (~>> population (map state-energy) first exact->inexact)))

@@ -1,7 +1,8 @@
 #lang s-exp "rocket.rkt"
 
-(require (only-in racket/list shuffle)
-         math/distributions
+(require math/distributions
+         (only-in racket/list shuffle)
+         racket/random
          racket/dict)
 
 (provide (struct-out person)
@@ -19,13 +20,17 @@
          place-around
          distribute-people
          display-place
+         name-at
+         friends-at
          ; Cost function / Fitness function
          (rename-out [energy-at1 energy-at]
                      [energy1 energy]
                      [place-random-change2 place-random-change])
+         place-random-change1
+         place-random-change2
+         place-random-change3
          people
          the-place
-         name-at
          read-scenario)
 
 (module+ test (require rackunit))
@@ -119,28 +124,60 @@
                [b (place-ref a-place x2 y2)])
     (~> a-place (place-set x1 y1 b) (place-set x2 y2 a))))
 
-(define (place-random-change1 a-place)
-  (define people (~>> a-place
-                      place-index
-                      dict-keys
-                      shuffle
-                      (take 2)))
-  (place-replace a-place (first people) (second people)))
+(define (place-move a-place x1 y1 x2 y2)
+  (given [a (place-ref a-place x1 y1)]
+         [b (place-ref a-place x2 y2)])
+  (~> a-place (place-set x1 y1 b) (place-set x2 y2 a)))
 
+
+; Change 2 random people
+(define (place-random-change1 a-place)
+  (given [max-x (place-x a-place)]
+         [max-y (place-y a-place)]
+         [x1 (random-ref (range 0 max-x))]
+         [y1 (random-ref (range 1 max-y))]
+         [x2 (random-ref (range 0 max-x))]
+         [y2 (random-ref (range 1 max-y))])
+  (place-move a-place x1 y1 x2 y2))
+
+; Move a random person horizontally or vertically
 (define (place-random-change2 a-place)
-  (define-values (people energies)
-    (for*/fold ([people empty]
-                [energies empty])
-               ([x (in-range (place-x a-place))]
-                [y (in-range (place-y a-place))])
-      (values (conj people (name-at a-place x y))
-              (conj energies (energy-at2 a-place x y)))))
-  (define dist (discrete-dist people energies))
-  (let loop ()
-    (let ([choosen (sample dist 2)])
-      (if (equal? (first choosen) (second choosen))
-          (loop)
-          (place-replace a-place (first choosen) (second choosen))))))
+  (given [max-x (sub1 (place-x a-place))]
+         [max-y (sub1 (place-y a-place))]
+         [x1 (random-ref (range 0 (add1 max-x)))]
+         [y1 (random-ref (range 1 (add1 max-y)))]
+         [moves (list (λ (x y) (values (if (= x 0)       max-x (sub1 x)) y))  ; left
+                      (λ (x y) (values (if (= x max-x)   0     (add1 x)) y))  ; right
+                      (λ (x y) (values x (if (= y 1)     max-y (sub1 y))))    ; up
+                      (λ (x y) (values x (if (= y max-y) 1     (add1 y)))))]  ; down
+         [move (random-ref moves)]
+         [(x2 y2) (move x1 y1)])
+  (place-move a-place x1 y1 x2 y2))
+
+; Move a random block horizontally or vertically
+(define (place-random-change3 a-place)
+  (given [max-x (sub1 (place-x a-place))]
+         [max-y (sub1 (place-y a-place))]
+         [x1 (random-ref (range 0 max-x))]
+         [y1 (random-ref (range 1 max-y))]
+         [x2 (random-ref (range (add1 x1) (add1 max-x)))]
+         [y2 (random-ref (range (add1 y1) (add1 max-y)))]
+         [moves (list (list (list x1 x2) (list y1 y2)
+                            (λ (x y) (values (if (= x 0) max-x (sub1 x)) y)))  ; left
+                      (list (list x2 x1) (list y1 y2)
+                            (λ (x y) (values (if (= x max-x) 0 (add1 x)) y)))  ; right
+                      (list (list x1 x2) (list y1 y2)
+                            (λ (x y) (values x (if (= y 1) max-y (sub1 y)))))    ; up
+                      (list (list x1 x2) (list y2 y1)
+                            (λ (x y) (values x (if (= y max-y) 1 (add1 y))))))]  ; down
+         [(list x-range y-range move) (random-ref moves)])
+  ;(printf "block: ~a ~a ~a ~a\n" x1 x2 y1 y2)
+  (for*/fold ([rslt a-place])
+             ([x (apply from-to x-range)]
+              [y (apply from-to y-range)])
+    (given [(x* y*) (move x y)])
+    ;(printf "~a ~a -> ~a ~a : ~a\n" x y x* y* (name-at a-place x y))
+    (place-move rslt x y x* y*)))
 
 (define (place-random)
   (define place (the-place))
@@ -173,6 +210,14 @@
   (define positions (map person-name (place-positions a-place)))
   (for* ([row (chunk row-size positions)])
     (displayln (join "\t" (reverse row)))))
+
+(define (name-at a-place x y)
+  (~> a-place (place-ref x y) person-name))
+
+(define (friends-at a-place x y)
+  (given [friends (~> a-place (place-ref x y) person-friends)]
+         [valid (~> a-place place-index dict-keys)])
+  (sequence->list (filter (λ (f) (member f valid)) friends)))
 
 (module+ test
   (define old-place (make-place 3 4))
@@ -213,9 +258,6 @@
       (y person-y))
     (place-set rslt x y a-person)))
 
-(define (name-at a-place x y)
-  (~> a-place (place-ref x y) person-name))
-
 (module+ test
   (test-case
    "Put people in right places"
@@ -232,18 +274,20 @@
     (check equal? (name-at a-place 0 1) "Johnny")
     (check equal? (name-at a-place 1 1) "Pierri"))))
 
-; == Simulated Annealing protocol
-
 ; -- Energy simple model
 
 (define (energy-at1 a-place x y)
-  (given [friends (person-friends (place-ref a-place x y))]
-         [neighbors (for/list ([p (place-around a-place x y)]) (person-name p))]
-         [energy (if (empty? friends) (length neighbors)
-                     (for/fold ([e (length neighbors)])
-                               ([f (in friends)])
-                       (- e (if (member f neighbors) 1 0))))])
-  (/ energy 8))
+  (given [friends (friends-at a-place x y)]
+         [energy (for/sum ([f (in friends)])
+                   (define pos (dict-ref (place-index a-place) f #f))
+                   (match pos
+                     [(cons x* y*)
+                      (if (and (>= 1 (abs (- x x*)))
+                               (>= 1 (abs (- y y*))))
+                          0 1)]
+                     [_ 0]))])
+  (if (zero? (length friends)) 0
+      (/ energy (length friends))))
 
 (define (energy1 a-place)
   (define-with a-place
@@ -262,8 +306,8 @@
                      ("Vazio" 0 0) ("Vazio" 1 0) ("Vazio" 2 0)
                      ("Vazio" 0 1) ("Vazio" 1 1) ("Vazio" 2 1)
                      ("Vazio" 0 2) ("Vazio" 1 2) ("Vazio" 2 2)))
-    (check equal? (energy-at1 empty-place 1 1) 1)
-    (check equal? (energy1 empty-place) 5))
+    (check equal? (energy-at1 empty-place 1 1) 0)
+    (check equal? (energy1 empty-place) 0))
    (test-begin
     (define max-energy
       (make-scenario 3 3
@@ -271,10 +315,10 @@
                      ("Johnny" 0 1) ("Ceará"  1 1) ("Luis"   2 1)
                      ("Pierri" 0 2) ("Felipe" 1 2) ("Rubens" 2 2)))
     
-    (check equal? (energy-at1 max-energy 1 1) 1)
-    (check equal? (energy-at1 max-energy 0 0) 3/8)
-    (check equal? (energy-at1 max-energy 1 0) 5/8)
-    (check equal? (energy1 max-energy) 5))
+    (check equal? (energy-at1 max-energy 1 1) 0)
+    (check equal? (energy-at1 max-energy 0 0) 0)
+    (check equal? (energy-at1 max-energy 1 0) 0)
+    (check equal? (energy1 max-energy) 0))
    (test-begin
     (define no-energy
       (make-scenario
@@ -288,33 +332,34 @@
        ("Pierri" 0 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Ronie"  "Felipe" "Rubens")
        ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
        ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
-    (check equal? (energy-at1 no-energy  1 1) 0)
-    (check equal? (energy1 no-energy) 0))))
+    (check equal? (energy-at1 no-energy  1 1) 1/2)
+    (check equal? (energy1 no-energy) 9/2))))
 
 (module+ test
   (test-case
    "Calculate energy on sample"
    (test-begin
     (define scenario-422 (read-scenario "data/experiment01.tsv"))
-    (check equal? 211/4 (energy1 scenario-422)))))
+    (check equal? 225/8 (energy1 scenario-422)))))
 
 ; -- Energy Manhattan distance model
+
+(define (manhattan a-place x y friend)
+  (define pos (dict-ref (place-index a-place) friend #f))
+  (match pos
+    [(cons x* y*)
+     (+ (abs (- x x*))
+        (abs (- y y*)))]
+    [_ 0]))
 
 (define (energy-at2 a-place x y)
   (define (energy-for friends)
     (for/sum ([f (in friends)])
-      (define pos (dict-ref index f #f))
-      (match pos
-        [(cons x* y*)
-         (+ (abs (- x x*))
-            (abs (- y y*)))]
-        [_ 0])))
-  (given [friends (person-friends (place-ref a-place x y))]
-         [index (place-index a-place)]
-         [valids (set-intersect friends (dict-keys index))]
+      (manhattan a-place x y f)))
+  (given [friends (friends-at a-place x y)]
          [e (energy-for friends)])
   (if (zero? e) 0
-      (- 1 (/ (length valids) e))))
+      (- 1 (/ (length friends) e))))
 
 (define (energy2 a-place)
   (define-with a-place
@@ -347,6 +392,32 @@
     (check equal? (energy-at2 some-energy 1 1) 0)
     (check equal? (energy-at2 some-energy 1 2) 0)
     (check equal? (energy2 some-energy) 17/12))))
+
+; -- Energy Manhattan distance + importance
+
+(define (energy-at3 a-place x y)
+  (define (energy-for friends)
+    (for/sum ([i (in-naturals 1)]
+              [f (in friends)])
+      (define pos (dict-ref (place-index a-place) f #f))
+      (match pos
+        [(cons x* y*)
+         (/ (+ (abs (- x x*))
+               (abs (- y y*)))
+            i)]
+        [_ 0])))
+  (given [friends (friends-at a-place x y)]
+         [e (energy-for friends)])
+  (if (zero? e) 0
+      (- 1 (/ (length friends) e))))
+
+(define (energy3 a-place)
+  (define-with a-place
+    (max-x place-x)
+    (max-y place-y))
+  (for*/sum ([x (in-range 0 max-x)]
+             [y (in-range 0 max-y)])
+    (energy-at3 a-place x y)))
 
 ; == Load Test Data Helpers
 

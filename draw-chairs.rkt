@@ -20,6 +20,9 @@
          [rgb (map (λ (x) (inexact->exact (ceiling (* x 255)))) (hsl->rgb (list color 1 0.5)))])
     (new brush% [color (apply make-object color% rgb)])))
 
+(define brush-gray
+  (new brush% [color (make-object color% 200 200 200)]))
+  
 (define (draw-heat-map-on-bitmap a-place)
   (given [width (cell-width)]
          [height (cell-height)]
@@ -52,9 +55,22 @@
     (given [x (- (* 9 width) (* width x*))] ; revert x
            [y (* height y*)]
            [e (~> energies (vector-ref x*) (vector-ref y*))]
-           [name (name-at a-place x* y*)])
-    (send dc set-brush (make-brush e))
+           [name (name-at a-place x* y*)]
+           [group (~> a-place (place-ref x* y*) person-group)]
+           [draw-left (and (< x* (sub1 max-x))
+                           (not (member (name-at a-place (add1 x*) y*)
+                                        (friends-at a-place x* y*)))
+                           (not (member (name-at a-place x* y*)
+                                        (friends-at a-place (add1 x*) y*))))]
+           [draw-bottom (and (< y* (sub1 max-y))
+                             (not (member (name-at a-place x* (add1 y*))
+                                          (friends-at a-place x* y*)))
+                             (not (member (name-at a-place x* y*)
+                                          (friends-at a-place x* (add1 y*)))))])
+    (send dc set-brush (if (equal? group 'wall) brush-gray (make-brush e)))
     (send dc draw-rectangle x y (sub1 width) (sub1 height))
+    (when draw-left   (send dc draw-line (sub1 x) y (sub1 x) (+ y height)))
+    (when draw-bottom (send dc draw-line x (+ y height -1) (+ x width) (+ y height -1)))
     (send-text dc x y name)))
 
 (define (do-it-bitmap)

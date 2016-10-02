@@ -1,6 +1,8 @@
 #lang racket/base
 ; Those are libraries, functions and macros I use on my own projects
-(require racket/function
+(require (for-syntax racket/base
+                     syntax/parse)
+         racket/function
          racket/match
          threading
          racket/string
@@ -29,9 +31,16 @@
 
 ; == Language extensions
 
-; "define" replacement
-(define-syntax-rule (given (bind expr) ...)
-  (begin (define bind expr) ...))
+; "define" replacement for variable assignment
+(define-syntax (given stx)
+  (syntax-parse stx #:literals (list)
+    [(_ [(list binds:id ...) exp:expr] rest ...)
+     #'(begin (match-define (list binds ...) exp) (given rest) ...)]
+    [(_ [bind:id exp:expr] rest ...)
+     #'(begin (define bind exp) (given rest) ...)]
+    [(_ [(binds:id ...) exp:expr] rest ...)
+     #'(begin (define-values (binds ...) exp) (given rest) ...)]))
+
 
 ; procfy
 ; Make values acts as procs
@@ -67,7 +76,19 @@
 
 ; Inclusive range =)
 (define (from-to n1 n2)
-  (range n1 (add1 n2)))
+  (if (<= n1 n2)
+      (in-generator
+       #:arity 1
+       (let loop ([current n1])
+         (when (<= current n2)
+           (yield current)
+           (loop (add1 current)))))
+      (in-generator
+       #:arity 1
+       (let loop ([current n1])
+         (when (>= current n2)
+           (yield current)
+           (loop (sub1 current)))))))
 
 ; Collections
 
@@ -91,10 +112,11 @@
 ; result.
 (define (in-dicts dicts [on-failure #f])
   (define keys (list->set (apply append (map dict-keys dicts))))
-  (in-generator #:arity 2
-                (for ([k keys])
-                  (let ([vs (for/list ([d dicts]) (dict-ref d k on-failure))])
-                    (yield k vs)))))
+  (in-generator
+   #:arity 2
+   (for ([k keys])
+     (let ([vs (for/list ([d dicts]) (dict-ref d k on-failure))])
+       (yield k vs)))))
 
 (define ((dict-merger updater [on-failure #f]) . dicts)
   (for/hash ([(k vs) (in-dicts dicts on-failure)])
@@ -150,4 +172,3 @@
       (for/list ([c (in-range col)])
         (format-proc (vector-ref data (+ r (* c col))))))
     (displayln (join " | " line))))
-  
