@@ -19,9 +19,9 @@
 
 (define (process input)
   (for/list ([line (in-lines input)]
-             #:when (regexp-match? #px"^\\d+\\s+\\d+\\s+\\(" line))
+             #:when (regexp-match? #px"^\\s*\\d+\\s+\\d+(?:\\.\\d+)?\\s+\\(" line))
     (match-define (list _ best evals)
-      (regexp-match #px"^\\d+\\s+(\\d+)\\s+\\((\\d+(?:\\s+\\d+)*)\\)" line))
+      (regexp-match #px"^\\s*\\d+\\s+(\\d+(?:\\.\\d+)?)\\s+\\((\\d+(?:\\.\\d+)?(?:\\s+\\d+(?:\\.\\d+)?)*)\\)" line))
     (list (string->number best) (average evals))))
 
 (define (read-and-plot input-filename [output-filename #f])
@@ -42,11 +42,11 @@
                  output-filename
                  #:x-label "Iterações"
                  #:y-label "Fitness"
-                 #:legend-anchor 'bottom-right)
+                 #:legend-anchor 'top-right)
       (plot data
             #:x-label "Iterações"
             #:y-label "Fitness"
-            #:legend-anchor 'bottom-right)))
+            #:legend-anchor 'top-right)))
 
 (define (logfile? path)
   (regexp-match? #px"\\.log$" path))

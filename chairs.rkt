@@ -281,17 +281,15 @@
 ; -- Energy simple model
 
 (define (energy-at1 a-place x y)
-  (given [friends (friends-at a-place x y)]
-         [energy (for/sum ([f (in friends)])
-                   (define pos (dict-ref (place-index a-place) f #f))
-                   (match pos
-                     [(cons x* y*)
-                      (if (and (>= 1 (abs (- x x*)))
-                               (>= 1 (abs (- y y*))))
-                          0 1)]
-                     [_ 0]))])
-  (if (zero? (length friends)) 0
-      (/ energy (length friends))))
+  (given [friends (friends-at a-place x y)])
+  (for/sum ([f (in friends)])
+    (define pos (dict-ref (place-index a-place) f #f))
+    (match pos
+      [(cons x* y*)
+       (if (and (>= 1 (abs (- x x*)))
+                (>= 1 (abs (- y y*))))
+           0 1)]
+      [_ 0])))
 
 (define (energy1 a-place)
   (define-with a-place
