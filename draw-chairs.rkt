@@ -67,7 +67,7 @@
                                           (friends-at a-place x* y*)))
                              (not (member (name-at a-place x* y*)
                                           (friends-at a-place x* (add1 y*)))))])
-    (send dc set-brush (if (equal? group 'wall) brush-gray (make-brush e)))
+    (send dc set-brush (if (member group '(wall empty-space)) brush-gray (make-brush e)))
     (send dc draw-rectangle x y (sub1 width) (sub1 height))
     (when draw-left   (send dc draw-line (sub1 x) y (sub1 x) (+ y height)))
     (when draw-bottom (send dc draw-line x (+ y height -1) (+ x width) (+ y height -1)))
@@ -85,7 +85,7 @@
 
 (define (create-canvas a-place)
   (define frame (new frame%
-                     [label "Example"]
+                     [label "Energy: ∞"]
                      [width 1000]
                      [height 300]))
   (define canvas (new canvas% [parent frame]

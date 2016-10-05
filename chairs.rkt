@@ -33,6 +33,8 @@
          place-random-change1
          place-random-change2
          place-random-change3
+         place-random-change4
+         place-random-change5
          people
          the-place
          read-scenario)
@@ -53,8 +55,10 @@
 (define (screen x y)
   (person "Monitor" 'wall x y empty))
 
+(define empty-counter 0)
 (define (empty-space x y)
-  (person "Vazio" 'empty-space x y empty))
+  (set! empty-counter (add1 empty-counter))
+  (person (format "Vazio #~a" empty-counter) 'empty-space x y empty))
 
 (define/match (make-person name group x y . friends) 
   [("" _ _ _ _)       (empty-space x y)]
@@ -111,7 +115,7 @@
 (define (place-set a-place x y value)
   (given [pos (xy->position a-place x y)]
          [new-positions (~> a-place place-positions (set-nth pos value))]
-         [new-index (if (member (person-group value) '(wall empty-space))
+         [new-index (if (equal? (person-group value) 'wall)
                         (place-index a-place) ; Don't add walls or empty-space to index
                         (~> a-place place-index (dict-set (person-name value) (cons x y))))])
   (struct-copy place a-place
@@ -183,6 +187,42 @@
     ;(printf "~a ~a -> ~a ~a : ~a\n" x y x* y* (name-at a-place x y))
     (place-move rslt x y x* y*)))
 
+; Force someone in my list to be near to me
+(define (place-random-change4 a-place)
+  (given [max-x (place-x a-place)]
+         [max-y (place-y a-place)]
+         [x (random-ref (range 0 max-x))]
+         [y (random-ref (range 1 max-y))]
+         [friends (friends-at a-place x y)]
+         [neighbors (map person-name (place-around a-place x y))]
+         [bads (filter (negate (λ (x) (index-of friends x))) neighbors)]
+         [goods (filter (negate (λ (x) (index-of neighbors x))) friends)])
+  (cond [(empty? bads) a-place]
+        [(empty? goods) a-place]
+        [else  (place-replace a-place (random-ref bads) (random-ref goods))]))
+
+; Switch people not in good positions
+(define (place-random-change5 a-place)
+  (given [max-x (place-x a-place)]
+         [max-y (place-y a-place)]
+         [x1 (random-ref (range 0 max-x))]
+         [y1 (random-ref (range 1 max-y))]
+         [x2 (random-ref (range 0 max-x))]
+         [y2 (random-ref (range 1 max-y))]
+         [friends1 (friends-at a-place x1 y1)]
+         [friends2 (friends-at a-place x2 y2)]
+         [neighbors1 (map person-name (place-around a-place x1 y1))]
+         [neighbors2 (map person-name (place-around a-place x2 y2))]
+         [bads1 (filter (negate (λ (it) (index-of friends1 it))) neighbors1)]
+         [bads2 (filter (negate (λ (it) (index-of friends2 it))) neighbors2)]
+         [goods1 (filter (negate (λ (it) (index-of neighbors1 it))) friends1)]
+         [goods2 (filter (negate (λ (it) (index-of neighbors2 it))) friends2)]
+         [swap1 (filter (λ (it) (index-of goods1 it)) bads2)]
+         [swap2 (filter (λ (it) (index-of goods2 it)) bads1)])
+  (cond [(empty? swap1) a-place]
+        [(empty? swap2) a-place]
+        [else  (place-replace a-place (random-ref swap1) (random-ref swap2))]))
+
 (define (place-random)
   (define place (the-place))
   (define-values (_ps rslt)
@@ -205,15 +245,16 @@
     (xy->position a-place col row)))
 
 (define (place-around a-place x y)
-  (apply nth*
-         (place-positions a-place)
-         (positions-around a-place x y)))
+  (given [people (apply nth*
+                        (place-positions a-place)
+                        (positions-around a-place x y))])
+  (filter (λ (x) ((negate equal?) 'wall (person-group x))) people))
 
-(define (display-place a-place)
+(define (display-place a-place [out (current-output-port)])
   (define row-size (place-x a-place))
   (define positions (map person-name (place-positions a-place)))
   (for* ([row (chunk row-size positions)])
-    (displayln (join "\t" (reverse row)))))
+    (displayln (join "\t" (reverse row)) out)))
 
 (define (name-at a-place x y)
   (~> a-place (place-ref x y) person-name))
@@ -335,14 +376,14 @@
        ("Felipe" 1 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Ronie"  "Rubens")
        ("Rubens" 2 2 "Cris"  "Sato"  "Johnny" "Ceará" "Luis"  "Pierri" "Felipe" "Ronie")))
     (check equal? (energy-at1 no-energy  1 1) 0)
-    (check equal? (energy1 no-energy) 4))))
+    (check equal? (energy1 no-energy) 32))))
 
 (module+ test
   (test-case
    "Calculate energy on sample"
    (test-begin
-    (define scenario-422 (read-scenario "data/experiment01.tsv"))
-    (check equal? 19693867/556920 (energy1 scenario-422)))))
+    (define scenario-274 (read-scenario "data/experiment01.tsv"))
+    (check equal? 274 (energy1 scenario-274)))))
 
 ; -- Energy Manhattan distance model
 

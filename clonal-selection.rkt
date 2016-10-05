@@ -1,20 +1,35 @@
 #lang s-exp "rocket.rkt"
 
 (require "chairs.rkt"
-         "draw-chairs.rkt"
-         racket/class
-         racket/gui/base
-         racket/draw
+         ;"draw-chairs.rkt"
+         ;racket/class
+         ;racket/gui/base
          racket/random
          (only-in racket/list make-list))
 
-(provide main)
+(provide ;main
+         (struct-out state)
+         clonal-selection
+         mutation-operators
+         fitness-energy
+         max-iterations
+         population-size
+         population-size-best
+         clone-rate)
 
 ; Parameters
 (define max-iterations (make-parameter 10000))
 (define population-size (make-parameter 20))
 (define population-size-best (make-parameter 10))
 (define clone-rate (make-parameter 3))
+(define mutation-operators (make-parameter (list place-random-change1
+                                                 place-random-change2
+                                                 place-random-change3
+                                                 place-random-change4
+                                                 place-random-change5)))
+
+(define fitness-energy (make-parameter energy2))
+(define display-energy (make-parameter energy2))
 
 ; Structs
 (struct clones (number original) #:transparent)
@@ -46,7 +61,11 @@
 (struct state (energy display-energy place) #:transparent)
 
 (define (make-state a-place)
-  (state (energy a-place) (energy2 a-place) a-place))
+  (given [e1 ((fitness-energy) a-place)]
+         [e2 (if (equal? (fitness-energy) (display-energy))
+                 e1
+                 ((display-energy) a-place))])
+  (state e1 e2 a-place))
 
 (define (make-state-random)
   (make-state (place-random)))
@@ -89,7 +108,7 @@
 
 (define (mutate-element element mutations)
   (given [a-place (state-place element)]
-         [mutagenes (list place-random-change1 place-random-change2 place-random-change3)]
+         [mutagenes (mutation-operators)]
          [mutant  (for/fold ([rslt a-place])
                             ([_i (range mutations)])
                     (let ([mutagene (random-ref mutagenes)])
@@ -101,12 +120,20 @@
          [missing (- (population-size) current-size)])
   (append population (make-population-random missing)))
 
-(define (main)
+#;(define (main)
   (define best-energy 99999)
   (define canvas (create-canvas (the-place)))
   (define (updater best-state population iteration)
+    (define window (send canvas get-parent))
     (define best (state-place best-state))
     (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
+    (send window set-label
+          (format "Energy: ~a Iteration: ~a"
+                  (~> best-state
+                      state-display-energy
+                      exact->inexact
+                      (~r #:precision '(= 4) #:min-width 7))
+                  iteration))
     (sleep/yield 0.05)
     (when (< (state-display-energy best-state) best-energy)
       (set! best-energy (state-display-energy best-state))
