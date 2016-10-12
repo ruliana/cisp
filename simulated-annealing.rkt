@@ -2,16 +2,19 @@
 
 (require "chairs.rkt")
 
-(provide main)
+(provide main
+         simulated-annealing
+         (struct-out state))
 
 ; == Simulated Annealing
 
-(struct state (energy data))
+(struct state (energy display-energy place))
 
-(define (new-state data)
-  (state (energy data) data))
+(define (new-state place)
+  (define e (energy place))
+  (state e e place))
 
-(define (simulated-annealing initial-state [max-steps 3000000])
+(define (simulated-annealing initial-state [max-steps 3000000] #:updater [updater #f])
   (define box-best (box initial-state))
   (define cycle-size 3000)
   (with-handlers ([exn:break? (λ (_e) (unbox box-best))])
@@ -20,7 +23,7 @@
       ; If you want to optimize GC :P
       ;(when (= 0 (remainder step 10)) (collect-garbage 'minor))
       ;(when (= 0 (remainder step 1000)) (collect-garbage 'major))
-      (define new (~>> (state-data current) place-random-change new-state))
+      (define new (~>> (state-place current) place-random-change new-state))
       (define e-new (state-energy new))
       (define e-best (state-energy best))
       (define e-current (state-energy current))
@@ -30,16 +33,7 @@
       (define prob (let ([p (exp (/ (- e-current e-new)
                                     (max 0.000001 temperature)))])
                      (if (> p 1) 1 p)))
-      (printf "t:~a s:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
-              (~r (exact->inexact temperature) #:precision '(= 4))
-              (~r step #:min-width 7)
-              (~r cycle #:min-width 4)
-              (~r (exact->inexact e-best) #:precision '(= 1))
-              (~r (exact->inexact e-current) #:precision '(= 1))
-              (~r (exact->inexact e-new) #:precision '(= 1))
-              (~r (* 100 prob)
-                  #:precision '(= 2)
-                  #:min-width 6))
+      (when updater (updater best* (list current) step))
       (cond
         [(>= 0 e-current) current]
         [(>= step max-steps) best*]
@@ -61,10 +55,20 @@
   (define slope 0.003)
   (/ height (+ 1 (exp (* slope (- cycle center))))))
 
-; == Using (remove it later)
+; Antigo updater
+#;(printf "t:~a s:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
+          (~r (exact->inexact temperature) #:precision '(= 4))
+          (~r step #:min-width 7)
+          (~r cycle #:min-width 4)
+          (~r (exact->inexact e-best) #:precision '(= 1))
+          (~r (exact->inexact e-current) #:precision '(= 1))
+          (~r (exact->inexact e-new) #:precision '(= 1))
+          (~r (* 100 prob)
+              #:precision '(= 2)
+              #:min-width 6))
 
 (define (main)
   ;(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
-  (define rslt (simulated-annealing (place-random)))
+  (define rslt (simulated-annealing (place-random) #:updater #f))
   (displayln (state-energy rslt))
-  (display-place (state-data rslt)))
+  (display-place (state-place rslt)))

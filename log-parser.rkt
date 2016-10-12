@@ -1,6 +1,7 @@
 #lang s-exp "rocket.rkt"
 (require plot
          plot/no-gui)
+
 (provide main)
 
 (define (call-with-input-output-file input-path output-path proc)
@@ -24,7 +25,7 @@
       (regexp-match #px"^\\s*\\d+\\s+(\\d+(?:\\.\\d+)?)\\s+\\((\\d+(?:\\.\\d+)?(?:\\s+\\d+(?:\\.\\d+)?)*)\\)" line))
     (list (string->number best) (average evals))))
 
-(define (read-and-plot input-filename [output-filename #f])
+(define (read-data input-filename)
   (define (indexed proc data)
     (for/list ([x (in-naturals)]
                [d data])
@@ -32,27 +33,32 @@
   (given (data (call-with-input-file* input-filename process #:mode 'text))
          (best-line (indexed first data))
          (avg-line (indexed second data)))
-  (plot-data best-line avg-line output-filename))
+  best-line)
 
-(define (plot-data best average [output-filename #f])
-  (define data (list (lines best #:color 'black #:label "Melhor" #:style 'short-dash)
-                     (lines average #:color 'black #:label "Média")))
+(define (plot-data lsts [output-filename #f])
+  (define data (for/list ([color (in '(red blue red black black black black black black black))]
+                          [label (in (list "Manhattan" "Vizinhança"))]
+                          #;[color (in (repeat 'black))]
+                          [d (in lsts)])
+                 (lines d #:color color #:label label)))
   (if output-filename
       (plot-file data
                  output-filename
                  #:x-label "Iterações"
-                 #:y-label "Fitness"
-                 #:legend-anchor 'top-right)
+                 #:y-label "Custo"
+                 #:legend-ancho 'top-right)
       (plot data
             #:x-label "Iterações"
-            #:y-label "Fitness"
-            #:legend-anchor 'top-right)))
+            #:y-label "Custo")))
 
-(define (logfile? path)
-  (regexp-match? #px"\\.log$" path))
+(define (logfile path)
+  (define rslt (regexp-match #px"\\/(mut[^.\\/]+)\\.log$" path))
+  (and rslt (ref rslt 1)))
 
 (define (main)
-  (for ([filename (in-directory ".")]
-        #:when (logfile? filename))
-    (read-and-plot filename (format "/tmp/~a.png" filename))))
+  (given [out-file "/tmp/vizinho-vs-manhattan.png"]
+         [ds (list (read-data "rslts/mut12345-manhattan.log")
+                   (read-data "rslts/mut12345-block.log"))])
+  (plot-data ds #f))
 
+(main)

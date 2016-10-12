@@ -51,11 +51,34 @@
         #:mode 'text))
     (state-place (clonal-selection updater))))
 
+
+(define best-tasks (list (task '(4) 'manhattan "mut4c-manhattan.log")
+                         (task '(4 5) 'manhattan "mut45c-manhattan.log")
+                         (task '(1 4 5) 'manhattan "mut145c-manhattan.log")
+                         (task '(1 3) 'manhattan "mut13c-manhattan.log")
+                         (task '(1 3 4) 'manhattan "mut134c-manhattan.log")
+                         (task '(1 3 4 5) 'manhattan "mut1345c-manhattan.log")
+                         (task '(1 2 3) 'manhattan "mut123c-manhattan.log")
+                         (task '(1 2 4) 'manhattan "mut124c-manhattan.log")
+                         (task '(1 2 3 5) 'manhattan "mut1235c-manhattan.log")
+                         (task '(1 2 3 4) 'manhattan "mut1234c-manhattan.log")
+                         (task '(1 2 3 4 5) 'manhattan "mut12345c-manhattan.log")))
+
+(define missing-tasks (list (task '(1 3) 'manhattan "mut13d-manhattan.log")
+                            (task '(1 3) 'manhattan "mut13e-manhattan.log")
+                            (task '(1 3) 'manhattan "mut13f-manhattan.log")
+                            (task '(1 3) 'manhattan "mut13g-manhattan.log")
+                            (task '(1 3) 'manhattan "mut13h-manhattan.log")
+                            (task '(1 3) 'manhattan "mut13i-manhattan.log")))
+                            
+                         
+
 (define (main)
-  (given [tasks (for*/list ([muts (in-combinations '(1 2 4 5))]
+  (given #;[tasks (for*/list ([muts (in-combinations '(1 2 3 4 5))]
                             [type (in '(manhattan block))]
                             #:unless (empty? muts))
                   (task muts type (format "mut~a-~a.log" (join "" (map number->string muts)) type)))]
+         [tasks missing-tasks]
          [processes (for/list ([_n (in-range 3)])
                       (create-process channel
                                       (let loop ()

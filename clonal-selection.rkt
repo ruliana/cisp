@@ -1,13 +1,13 @@
 #lang s-exp "rocket.rkt"
 
 (require "chairs.rkt"
-         ;"draw-chairs.rkt"
-         ;racket/class
-         ;racket/gui/base
+         "draw-chairs.rkt"
+         racket/class
+         racket/gui/base
          racket/random
          (only-in racket/list make-list))
 
-(provide ;main
+(provide main
          (struct-out state)
          clonal-selection
          mutation-operators
@@ -20,7 +20,7 @@
 ; Parameters
 (define max-iterations (make-parameter 10000))
 (define population-size (make-parameter 20))
-(define population-size-best (make-parameter 10))
+(define population-size-best (make-parameter 20))
 (define clone-rate (make-parameter 3))
 (define mutation-operators (make-parameter (list place-random-change1
                                                  place-random-change2
@@ -120,7 +120,7 @@
          [missing (- (population-size) current-size)])
   (append population (make-population-random missing)))
 
-#;(define (main)
+(define (main)
   (define best-energy 99999)
   (define canvas (create-canvas (the-place)))
   (define (updater best-state population iteration)

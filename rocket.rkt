@@ -41,7 +41,6 @@
     [(_ [(binds:id ...) exp:expr] rest ...)
      #'(begin (define-values (binds ...) exp) (given rest) ...)]))
 
-
 ; procfy
 ; Make values acts as procs
 (define/match ((λ= value) other)
