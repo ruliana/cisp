@@ -9,6 +9,7 @@
 
 (provide ;main
  clonal-selection
+ ;parameters
  mutation-operators
  max-iterations
  population-size

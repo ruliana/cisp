@@ -3,28 +3,32 @@
 (require "chairs.rkt")
 (require racket/dict
          match-plus
-         (only-in racket/list shuffle)
-         (prefix-in p: racket/place))
+         (only-in racket/list shuffle))
 
-(provide main)
+(provide ;main
+         ant-colony-optimization)
 
 ; === Problem ===
 ;(module+ test (require rackunit))
 
 (define ant-population (make-parameter 21))
 (define decay (make-parameter 0.9))
-(define number-of-places (make-parameter 3))
+
+(define (ant-colony-optimization initial-state #:updater [updater #f])
+  (let loop ([steps 10000]
+             [pheromones (hash)]
+             [best (make-state initial-state)])
+    (let* ([currents (for/list ([_i (in-range (ant-population))])
+                       (solution pheromones))]
+           [best* (find-min (conj currents best) #:key state-energy)]
+           [pheromones* (pheromomes-update pheromones currents best)])
+      (when updater (updater best* currents steps))
+      (if (> 1 steps) best*
+          (loop (sub1 steps)
+                (pheromone-decay pheromones* best*)
+                best*)))))
 
 (struct choice (prob x y person place remaining-people) #:transparent)
-
-; Basic Scenario
-#;(module+ test
-    (define people (list (make-person "Ronie"   "LCoN" 0 0 "Cris")
-                         (make-person "Cris"    "LCoN" 1 0 "Leandro")
-                         (make-person "Leandro" "LCoN" 0 1 "Dávila" "Cris")
-                         (make-person "Dávila"  "LCoN" 1 1 "Ronie")))
-    (define empty-place (make-place 2 2))
-    (define ronie-at-1 (place-set empty-place 0 0 (first people))))
 
 ; All options possible to fill (x, y) in place.
 ; (list person) int int place (hash (list x y person-name) . value) -> (list choice)
@@ -103,10 +107,10 @@
 
 (define decay-matrix
   (matrix 3 3 #(0.00625 0.00625 0.00625
-                        0.00625 0.9     0.00625
-                        0.00625 0.00625 0.00625)))
+                0.00625 0.9     0.00625
+                0.00625 0.00625 0.00625)))
 
-(define/match* (pheromones->matrices pheromones (state _ (place x-size y-size _)))
+(define/match* (pheromones->matrices pheromones (state _ _ (place x-size y-size _ _)))
   (define names (~>> pheromones dict-keys (map third) sequence->list list->set))
   (define rslt (for/hash ([name (in names)])
                  (values name (make-matrix y-size x-size))))
@@ -133,16 +137,16 @@
 
 ; === Solution Builder ===
 
-(struct state (energy place) #:prefab)
-
-(define (solution people a-place pheromones)
+(define (solution pheromones)
+  (define some-people (people))
+  (define a-place (the-place))
   (define coords (~>> (for*/list ([x (range (place-x a-place))]
                                   [y (range (place-y a-place))])
                         (cons x y))
                       shuffle))
   (define-values (pc pp)
     (for*/fold ([pc a-place]
-                [pp people])
+                [pp some-people])
                ([xy (in coords)]
                 #:when (equal? 'empty-space (person-group (place-ref pc (car xy) (cdr xy))))
                 #:break (empty? pp))
@@ -154,80 +158,7 @@
                            (choice-y choosen)
                            (choice-person choosen))
                 (choice-remaining-people choosen)))))
-  (state (energy pc) pc))
-
-; === Distributed ===
-
-(define (make-solution-place people a-place)
-  (define p
-    (p:place ch
-             (match-define (list people a-place) (p:place-channel-get ch))
-             (let loop ()
-               (let* ([pheromones+best (p:place-channel-get ch)]
-                      [pheromones (first pheromones+best)]
-                      [best (second pheromones+best)]
-                      [current (solution people a-place pheromones)]
-                      [pheromones* (if (<= (state-energy current) (+ best 10))
-                                       (pheromone-gain current best)
-                                       (hash))])
-                 (p:place-channel-put ch (list current pheromones*)))
-               (loop))))
-  (p:place-channel-put p (list people a-place))
-  p)
-
-(define (make-places number-of-places people a-place)
-  (for/list ([i (in-range number-of-places)])
-    (make-solution-place people a-place)))
-
-(define (put-pheromones places pheromones best)
-  (for ([p places])
-    (p:place-channel-put p (list pheromones best))))
-
-(define (get-pheromones places)
-  (for/list ([p places]) (p:place-channel-get p)))
-
-(define (search-distributed people a-place)
-  (define threads (make-places (number-of-places) people a-place))
-  (let loop ([steps 10000]
-             [ants (ant-population)]
-             [pheromones (hash)]
-             [best (solution people a-place (hash))])
-    (put-pheromones threads pheromones (state-energy best))
-    (let* ([cphs (get-pheromones threads)]
-           [states (map first cphs)]
-           [best* (find-min (conj states best) #:key state-energy)]
-           [pheromones* (apply (dict-merger + 0) (conj (map second cphs) pheromones))])
-      (printf "~a ~a ~a ~a\n" steps ants
-              (state-energy best*)
-              (sequence->list (map state-energy states)))
-      (when (> 1 ants) (display-pher pheromones*))
-      (cond [(> 1 steps) best*]
-            [(> 1 ants) (loop (- steps (number-of-places))
-                              (ant-population)
-                              (pheromone-decay pheromones* best*)
-                              best*)]
-            [else (loop (- steps (number-of-places))
-                        (- ants (number-of-places))
-                        pheromones*
-                        best*)]))))
-
-(define (search people a-place)
-  (let loop ([steps 10000]
-             [pheromones (hash)]
-             [best (solution people a-place (hash))])
-    (let* ([currents (for/list ([_i (in-range (ant-population))])
-                       (solution people a-place pheromones))]
-           [best* (find-min (conj currents best) #:key state-energy)]
-           [pheromones* (pheromomes-update pheromones currents best)])
-      (printf "~a ~a ~a\n"
-              steps
-              (state-energy best*)
-              (sequence->list (map state-energy currents)))
-      (display-pher pheromones* best*)
-      (if (> 1 steps) best*
-          (loop (sub1 steps)
-                (pheromone-decay pheromones* best*)
-                best*)))))
+  (make-state pc))
 
 (define (display-pher pheromones a-state)
   (~> pheromones
@@ -249,5 +180,5 @@
           #:when (> (cdr v) 0.000001))
       (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
 
-(define (main)
-  (~> (search (people) (the-place)) state-place display-place))
+#;(define (main)
+  (~> (ant-colony-optimization (place-random)) state-place display-place))

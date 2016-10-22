@@ -118,6 +118,20 @@
     (check equal? (position (first data)) '(0 0))
     (check equal? (position (last data)) '(9 9)))))
 
+;                                  
+;           ;                      
+;   ;;;;    ;                      
+;   ;   ;   ;                      
+;   ;    ;  ;                      
+;   ;    ;  ;    ;;;     ;;;  ;;;  
+;   ;    ;  ;       ;   ;    ;   ; 
+;   ;   ;   ;       ;  ;     ;   ; 
+;   ;;;;    ;    ;;;;  ;     ;;;;; 
+;   ;       ;   ;   ;  ;     ;     
+;   ;       ;   ;   ;  ;     ;     
+;   ;       ;   ;   ;   ;    ;     
+;   ;       ;;   ;;;;    ;;;  ;;;;
+;
 ; == Place protocol
 ; Who goes where.
 

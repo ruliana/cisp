@@ -13,9 +13,6 @@
   (with-handlers ([exn:break? (λ (_e) (unbox box-best))])
     (define (loop current best step)
       (set-box! box-best best)
-      ; If you want to optimize GC :P
-      ;(when (= 0 (remainder step 10)) (collect-garbage 'minor))
-      ;(when (= 0 (remainder step 1000)) (collect-garbage 'major))
       (define new (~>> (state-place current) place-random-change make-state))
       (define e-new (state-energy new))
       (define e-best (state-energy best))
