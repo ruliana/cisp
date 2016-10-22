@@ -244,6 +244,16 @@
         [(empty? swap2) a-place]
         [else  (place-replace a-place (random-ref swap1) (random-ref swap2))]))
 
+(define (place-random-change-multi a-place)
+  (given [all-place-changes (vector place-random-change1
+                                    place-random-change2
+                                    place-random-change3
+                                    place-random-change4
+                                    place-random-change5)]
+         [change (random-ref all-place-changes)])
+  (change a-place))
+
+
 (define (place-random)
   (define place (the-place))
   (define-values (_ps rslt)
@@ -340,6 +350,22 @@
     (check equal? (name-at a-place 0 1) "Johnny")
     (check equal? (name-at a-place 1 1) "Pierri"))))
 
+
+;                                          
+;   ;;;;;                                  
+;   ;                                      
+;   ;                                      
+;   ;      ;;;;;    ;;;   ;;;   ;;;; ;   ; 
+;   ;      ;    ;  ;   ;  ;    ;   ; ;   ; 
+;   ;;;;   ;    ;  ;   ;  ;    ;   ; ;  ;; 
+;   ;      ;    ;  ;;;;;  ;    ;   ;  ; ;  
+;   ;      ;    ;  ;      ;    ;   ;  ; ;  
+;   ;      ;    ;  ;      ;    ;   ;  ; ;  
+;   ;      ;    ;  ;      ;    ;   ;  ; ;  
+;   ;;;;;  ;    ;   ;;;;  ;     ;;;;   ;   
+;                                  ;   ;   
+;                                  ;   ;   
+;                               ;;;  ;;    
 ; -- Energy simple model
 
 (define (energy-at1 a-place x y)
@@ -506,7 +532,7 @@
 (define energy-display-strategy (make-parameter energy2))
 (define energy-at-display-strategy (make-parameter energy-at2))
 
-(define place-random-change-strategy (make-parameter place-random-change2))
+(define place-random-change-strategy (make-parameter place-random-change-multi))
 
 (define (energy a-place)
   ((energy-strategy) a-place))

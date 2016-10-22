@@ -48,18 +48,6 @@
   (define slope 0.003)
   (/ height (+ 1 (exp (* slope (- cycle center))))))
 
-; Antigo updater
-#;(printf "t:~a s:~a c:~a e/b:~a e/c:~a e/n:~a prob:~a% \n"
-          (~r (exact->inexact temperature) #:precision '(= 4))
-          (~r step #:min-width 7)
-          (~r cycle #:min-width 4)
-          (~r (exact->inexact e-best) #:precision '(= 1))
-          (~r (exact->inexact e-current) #:precision '(= 1))
-          (~r (exact->inexact e-new) #:precision '(= 1))
-          (~r (* 100 prob)
-              #:precision '(= 2)
-              #:min-width 6))
-
 #;(define (main)
   ;(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
   (define rslt (simulated-annealing (place-random) #:updater #f))

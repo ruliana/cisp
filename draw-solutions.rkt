@@ -7,6 +7,8 @@
          racket/class
          racket/gui/base)
 
+(provide main)
+
 (define (make-graphic-updater #:at-step [at-step 1])
   (define best-energy +inf.0)
   (define canvas (create-canvas (the-place)))
@@ -44,7 +46,7 @@
   updater)
 
 (define (main)
-  (define updater (make-graphic-updater #:at-step 1))
-  ;(display-place (state-place (simulated-annealing (place-random) #:updater updater)))
-  (display-place (state-place (clonal-selection (place-random) #:updater updater))))
+  (define updater (make-graphic-updater #:at-step 329))
+  (display-place (state-place (simulated-annealing (place-random) #:updater updater)))
+  #;(display-place (state-place (clonal-selection (place-random) #:updater updater))))
 
