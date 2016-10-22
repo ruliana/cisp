@@ -7,15 +7,13 @@
          racket/random
          (only-in racket/list make-list))
 
-(provide main
-         (struct-out state)
-         clonal-selection
-         mutation-operators
-         fitness-energy
-         max-iterations
-         population-size
-         population-size-best
-         clone-rate)
+(provide ;main
+ clonal-selection
+ mutation-operators
+ max-iterations
+ population-size
+ population-size-best
+ clone-rate)
 
 ; Parameters
 (define max-iterations (make-parameter 10000))
@@ -28,18 +26,17 @@
                                                  place-random-change4
                                                  place-random-change5)))
 
-(define fitness-energy (make-parameter energy2))
-(define display-energy (make-parameter energy2))
-
 ; Structs
 (struct clones (number original) #:transparent)
 
 ; Algorithm
-(define (clonal-selection [updater #f])
+(define (clonal-selection [sample #f] #:updater [updater #f])
   (define rslt #f)
   (with-handlers ([exn:break? (λ (exn) rslt)])
     (let loop ([iteration (max-iterations)]
-               [population (initialize-population)])
+               [population (if sample
+                               (conj (initialize-population) (make-state sample))
+                               (initialize-population))])
       (set! rslt (first population))
       (when updater (updater rslt population iteration)) 
       (cond
@@ -55,20 +52,6 @@
          [best-of-all (select-best (population-size) mutants population)]
          #;[population-new (complete-with-random best-of-all)])
     best-of-all))
-
-; State
-
-(struct state (energy display-energy place) #:transparent)
-
-(define (make-state a-place)
-  (given [e1 ((fitness-energy) a-place)]
-         [e2 (if (equal? (fitness-energy) (display-energy))
-                 e1
-                 ((display-energy) a-place))])
-  (state e1 e2 a-place))
-
-(define (make-state-random)
-  (make-state (place-random)))
 
 ; Interface with "chairs"
 
@@ -120,30 +103,30 @@
          [missing (- (population-size) current-size)])
   (append population (make-population-random missing)))
 
-(define (main)
-  (define best-energy 99999)
-  (define canvas (create-canvas (the-place)))
-  (define (updater best-state population iteration)
-    (define window (send canvas get-parent))
-    (define best (state-place best-state))
-    (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
-    (send window set-label
-          (format "Energy: ~a Iteration: ~a"
-                  (~> best-state
-                      state-display-energy
-                      exact->inexact
-                      (~r #:precision '(= 4) #:min-width 7))
-                  iteration))
-    (sleep/yield 0.05)
-    (when (< (state-display-energy best-state) best-energy)
-      (set! best-energy (state-display-energy best-state))
-      (displayln "=")
-      (display-place best)
-      (displayln "="))
-    (printf "~a ~a ~a\n"
-            (~r iteration #:min-width 5)
-            (~> population first state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7))
-            (~>> population
-                 (map (λ~> state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7)))
-                 sequence->list)))
-  (display-place (state-place (clonal-selection updater))))
+#;(define (main)
+    (define best-energy 99999)
+    (define canvas (create-canvas (the-place)))
+    (define (updater best-state population iteration)
+      (define window (send canvas get-parent))
+      (define best (state-place best-state))
+      (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
+      (send window set-label
+            (format "Energy: ~a Iteration: ~a"
+                    (~> best-state
+                        state-display-energy
+                        exact->inexact
+                        (~r #:precision '(= 4) #:min-width 7))
+                    iteration))
+      (sleep/yield 0.05)
+      (when (< (state-display-energy best-state) best-energy)
+        (set! best-energy (state-display-energy best-state))
+        (displayln "=")
+        (display-place best)
+        (displayln "="))
+      (printf "~a ~a ~a\n"
+              (~r iteration #:min-width 5)
+              (~> population first state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7))
+              (~>> population
+                   (map (λ~> state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7)))
+                   sequence->list)))
+    (display-place (state-place (clonal-selection updater))))

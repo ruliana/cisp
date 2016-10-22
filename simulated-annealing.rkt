@@ -2,17 +2,10 @@
 
 (require "chairs.rkt")
 
-(provide main
-         simulated-annealing
-         (struct-out state))
+(provide ;main
+         simulated-annealing)
 
 ; == Simulated Annealing
-
-(struct state (energy display-energy place))
-
-(define (new-state place)
-  (define e (energy place))
-  (state e e place))
 
 (define (simulated-annealing initial-state [max-steps 3000000] #:updater [updater #f])
   (define box-best (box initial-state))
@@ -23,7 +16,7 @@
       ; If you want to optimize GC :P
       ;(when (= 0 (remainder step 10)) (collect-garbage 'minor))
       ;(when (= 0 (remainder step 1000)) (collect-garbage 'major))
-      (define new (~>> (state-place current) place-random-change new-state))
+      (define new (~>> (state-place current) place-random-change make-state))
       (define e-new (state-energy new))
       (define e-best (state-energy best))
       (define e-current (state-energy current))
@@ -40,7 +33,7 @@
         [(>= cycle cycle-size) (loop best* best* (add1 step))]
         [(should-change temperature e-current e-new) (loop new best* (add1 step))]
         [else (loop current best* (add1 step))]))
-    (define first-state (new-state initial-state))
+    (define first-state (make-state initial-state))
     (loop first-state first-state 0)))
 
 (define (should-change temperature current-energy new-energy)
@@ -67,7 +60,7 @@
               #:precision '(= 2)
               #:min-width 6))
 
-(define (main)
+#;(define (main)
   ;(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
   (define rslt (simulated-annealing (place-random) #:updater #f))
   (displayln (state-energy rslt))

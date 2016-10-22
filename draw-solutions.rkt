@@ -2,14 +2,17 @@
 
 (require "chairs.rkt"
          "simulated-annealing.rkt"
+         "clonal-selection.rkt"
          "draw-chairs.rkt"
          racket/class
          racket/gui/base)
 
-(define (main)
-  (define best-energy 99999)
+(define (make-graphic-updater #:at-step [at-step 1])
+  (define best-energy +inf.0)
   (define canvas (create-canvas (the-place)))
   (define (updater best-state population iteration)
+    (when (zero? (remainder iteration at-step)) (real-updater best-state population iteration)))
+  (define (real-updater best-state population iteration)
     (define window (send canvas get-parent))
     (define best (state-place best-state))
     (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
@@ -28,9 +31,20 @@
       (displayln "="))
     (printf "~a ~a ~a\n"
             (~r iteration #:min-width 5)
-            (~> population first state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7))
+            (~> population
+                first
+                state-display-energy
+                exact->inexact
+                (~r #:precision '(= 4) #:min-width 7))
             (~>> population
-                 (map (λ~> state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7)))
+                 (map (λ~> state-display-energy
+                           exact->inexact
+                           (~r #:precision '(= 4) #:min-width 7)))
                  sequence->list)))
-  (display-place (state-place (simulated-annealing (place-random) #:updater updater))))
+  updater)
+
+(define (main)
+  (define updater (make-graphic-updater #:at-step 1))
+  ;(display-place (state-place (simulated-annealing (place-random) #:updater updater)))
+  (display-place (state-place (clonal-selection (place-random) #:updater updater))))
 

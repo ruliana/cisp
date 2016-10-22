@@ -11,6 +11,10 @@
          screen
          empty-space
          file->list
+         ; States
+         (struct-out state)
+         make-state
+         make-state-random
          ; Positions (matrix)
          (struct-out place)
          make-place
@@ -23,9 +27,11 @@
          name-at
          friends-at
          ; Cost function / Fitness function
-         (rename-out [energy-at2 energy-at]
-                     [energy2 energy]
-                     [place-random-change2 place-random-change])
+         energy
+         energy-at
+         energy-display
+         energy-at-display
+         place-random-change
          energy-at1
          energy1
          energy-at2
@@ -72,6 +78,21 @@
 
 (define (raw->person name group x y . friends)
   (apply make-person name group (string->number x) (string->number y) friends))
+
+; == State
+
+(struct state (energy display-energy place) #:transparent)
+
+(define (make-state a-place)
+  (given [e1 (energy a-place)]
+         [e2 (if (equal? energy energy-display)
+                 e1
+                 (energy-display a-place))])
+  (state e1 e2 a-place))
+
+(define (make-state-random)
+  (make-state (place-random)))
+
 
 ; == Load data protocol
 
@@ -274,7 +295,7 @@
   (test-case
    "Set and recover data from place"
    (test-begin
-    (check equal? (place-ref old-place 1 2) (empty-space 3 4))
+    (check equal? (person-group (place-ref old-place 1 2)) 'empty-space)
     (check equal? (person-name (place-ref new-place 1 2)) "Ronie")
     (check equal? (person-name (place-ref new-place 2 2)) "Cris")
     (check equal? (person-group (place-ref new-place 0 0)) 'wall)))
@@ -457,7 +478,8 @@
       (dict-set rslt col (list x y)))))
 
 (define (merge-people people-list to-override)
-  (for/list ([p people-list])
+  (for/list ([p people-list]
+             #:unless (equal? (person-group p) 'empty-space))
     (match-define (list x y) (dict-ref to-override (person-name p)))
     (struct-copy person p [x x] [y y])))
 
@@ -477,3 +499,26 @@
          [pp* (sequence->list (drop 10 pp))])
     (values (make-parameter pp*)
             (make-parameter pc*))))
+
+(define energy-strategy (make-parameter energy2))
+(define energy-at-strategy (make-parameter energy-at2))
+
+(define energy-display-strategy (make-parameter energy2))
+(define energy-at-display-strategy (make-parameter energy-at2))
+
+(define place-random-change-strategy (make-parameter place-random-change2))
+
+(define (energy a-place)
+  ((energy-strategy) a-place))
+
+(define (energy-at a-place x y)
+  ((energy-at-strategy) a-place x y))
+
+(define (energy-display a-place)
+  ((energy-display-strategy) a-place))
+
+(define (energy-at-display a-place x y)
+  ((energy-at-display-strategy) a-place x y))
+
+(define (place-random-change a-place)
+  ((place-random-change-strategy) a-place))
