@@ -6,7 +6,7 @@
          (only-in racket/list shuffle))
 
 (provide ;main
-         ant-colony-optimization)
+ ant-colony-optimization)
 
 ; === Problem ===
 ;(module+ test (require rackunit))
@@ -15,18 +15,21 @@
 (define decay (make-parameter 0.9))
 
 (define (ant-colony-optimization initial-state #:updater [updater #f])
-  (let loop ([steps 10000]
-             [pheromones (hash)]
-             [best (make-state initial-state)])
-    (let* ([currents (for/list ([_i (in-range (ant-population))])
-                       (solution pheromones))]
-           [best* (find-min (conj currents best) #:key state-energy)]
-           [pheromones* (pheromomes-update pheromones currents best)])
-      (when updater (updater best* currents steps))
-      (if (> 1 steps) best*
-          (loop (sub1 steps)
-                (pheromone-decay pheromones* best*)
-                best*)))))
+  (define rslt #f)
+  (with-handlers ([exn:break? (λ (exn) rslt)])
+    (let loop ([steps 10000]
+               [pheromones (hash)]
+               [best (make-state initial-state)])
+      (let* ([currents (for/list ([_i (in-range (ant-population))])
+                         (solution pheromones))]
+             [best* (find-min (conj currents best) #:key state-energy)]
+             [pheromones* (pheromomes-update pheromones currents best)])
+        (set! rslt best*)
+        (when updater (updater best* currents steps))
+        (if (> 1 steps) best*
+            (loop (sub1 steps)
+                  (pheromone-decay pheromones* best*)
+                  best*))))))
 
 (struct choice (prob x y person place remaining-people) #:transparent)
 
@@ -107,8 +110,8 @@
 
 (define decay-matrix
   (matrix 3 3 #(0.00625 0.00625 0.00625
-                0.00625 0.9     0.00625
-                0.00625 0.00625 0.00625)))
+                        0.00625 0.9     0.00625
+                        0.00625 0.00625 0.00625)))
 
 (define/match* (pheromones->matrices pheromones (state _ _ (place x-size y-size _ _)))
   (define names (~>> pheromones dict-keys (map third) sequence->list list->set))
@@ -181,4 +184,4 @@
       (printf "~ax~a ~a: ~a\n" x y (car v) (cdr v))))
 
 #;(define (main)
-  (~> (ant-colony-optimization (place-random)) state-place display-place))
+    (~> (ant-colony-optimization (place-random)) state-place display-place))

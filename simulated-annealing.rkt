@@ -2,17 +2,26 @@
 
 (require "chairs.rkt")
 
-(provide ;main
-         simulated-annealing)
+(provide simulated-annealing
+         ;parameters
+         annealing-cycle
+         temperature-center
+         temperature-height
+         temperature-slope)
+
+(define annealing-cycle (make-parameter 3000))
+(define temperature-center (make-parameter 1000))
+(define temperature-height (make-parameter 6))
+(define temperature-slope (make-parameter 0.003))
 
 ; == Simulated Annealing
 
 (define (simulated-annealing initial-state [max-steps 3000000] #:updater [updater #f])
-  (define box-best (box initial-state))
-  (define cycle-size 3000)
+  (define box-best (box (state-energy (make-state initial-state))))
+  (define cycle-size (annealing-cycle))
   (with-handlers ([exn:break? (λ (_e) (unbox box-best))])
     (define (loop current best step)
-      (set-box! box-best best)
+      (set-box! box-best (state-energy best))
       (define new (~>> (state-place current) place-random-change make-state))
       (define e-new (state-energy new))
       (define e-best (state-energy best))
@@ -25,8 +34,8 @@
                      (if (> p 1) 1 p)))
       (when updater (updater best* (list current) step))
       (cond
-        [(>= 0 e-current) current]
-        [(>= step max-steps) best*]
+        [(>= 0 e-current) (state-energy current)]
+        [(>= step max-steps) (state-energy best*)]
         [(>= cycle cycle-size) (loop best* best* (add1 step))]
         [(should-change temperature e-current e-new) (loop new best* (add1 step))]
         [else (loop current best* (add1 step))]))
@@ -40,13 +49,7 @@
         (< (random) prob))))
 
 (define (temperature-for cycle)
-  (define center 1000)
-  (define height 6)
-  (define slope 0.003)
+  (define center (temperature-center))
+  (define height (temperature-height))
+  (define slope (temperature-slope))
   (/ height (+ 1 (exp (* slope (- cycle center))))))
-
-#;(define (main)
-  ;(define a-place (distribute-people (make-place 10 10) (file->list "data/chairs.csv")))
-  (define rslt (simulated-annealing (place-random) #:updater #f))
-  (displayln (state-energy rslt))
-  (display-place (state-place rslt)))

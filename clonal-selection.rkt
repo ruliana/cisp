@@ -1,31 +1,44 @@
 #lang s-exp "rocket.rkt"
 
-(require "chairs.rkt"
-         "draw-chairs.rkt"
-         racket/class
-         racket/gui/base
-         racket/random
+(require racket/random
          (only-in racket/list make-list))
 
-(provide ;main
- clonal-selection
- ;parameters
- mutation-operators
- max-iterations
- population-size
- population-size-best
- clone-rate)
+(provide clonal-selection
+         ;parameters
+         max-iterations
+         population-size
+         population-size-best
+         clone-rate
+         ;adapters
+         make-state-proc
+         make-state-randomized-proc
+         state-energy-proc
+         state-internal-proc
+         mutation-operators)
 
 ; Parameters
 (define max-iterations (make-parameter 10000))
 (define population-size (make-parameter 20))
 (define population-size-best (make-parameter 20))
 (define clone-rate (make-parameter 3))
-(define mutation-operators (make-parameter (list place-random-change1
-                                                 place-random-change2
-                                                 place-random-change3
-                                                 place-random-change4
-                                                 place-random-change5)))
+
+(define make-state-proc (make-parameter #f))
+(define make-state-randomized-proc (make-parameter #f))
+(define state-energy-proc (make-parameter #f))
+(define state-internal-proc (make-parameter #f))
+(define mutation-operators (make-parameter (list)))
+
+(define (make-state individual)
+  ((make-state-proc) individual))
+
+(define (make-state-randomized)
+  ((make-state-randomized-proc)))
+
+(define (state-energy state)
+  ((state-energy-proc) state))
+
+(define (state-internal state)
+  ((state-internal-proc) state))
 
 ; Structs
 (struct clones (number original) #:transparent)
@@ -54,11 +67,9 @@
          #;[population-new (complete-with-random best-of-all)])
     best-of-all))
 
-; Interface with "chairs"
-
 (define (make-population-random size)
   (for/list ([_x (range size)])
-    (make-state-random)))
+    (make-state-randomized)))
 
 (define (initialize-population)
   (make-population-random (population-size)))
@@ -66,11 +77,9 @@
 (define (solution? population)
   (ormap (λ (p) (zero? (state-energy p))) population))
 
-(define affinity state-energy)
-
 (define (select-best size . populations)
   (define pops (sequence->list (append* populations)))
-  (take size (sort pops < #:key affinity)))
+  (take size (sort pops < #:key state-energy)))
 
 (define (clone population-sorted)
   (given [p-size (population-size)]
@@ -91,43 +100,15 @@
   (append* original mutants))
 
 (define (mutate-element element mutations)
-  (given [a-place (state-place element)]
+  (given [data (state-internal element)]
          [mutagenes (mutation-operators)]
-         [mutant  (for/fold ([rslt a-place])
-                            ([_i (range mutations)])
-                    (let ([mutagene (random-ref mutagenes)])
-                      (mutagene rslt)))])
+         [mutant (for/fold ([rslt data])
+                           ([_i (range mutations)])
+                   (let ([mutagene (random-ref mutagenes)])
+                     (mutagene rslt)))])
   (make-state mutant))
 
 (define (complete-with-random population)
   (given [current-size (length population)]
          [missing (- (population-size) current-size)])
   (append population (make-population-random missing)))
-
-#;(define (main)
-    (define best-energy 99999)
-    (define canvas (create-canvas (the-place)))
-    (define (updater best-state population iteration)
-      (define window (send canvas get-parent))
-      (define best (state-place best-state))
-      (send canvas refresh-now (λ (dc) (draw-heat-map-on-dc dc best) ) #:flush? #t)
-      (send window set-label
-            (format "Energy: ~a Iteration: ~a"
-                    (~> best-state
-                        state-display-energy
-                        exact->inexact
-                        (~r #:precision '(= 4) #:min-width 7))
-                    iteration))
-      (sleep/yield 0.05)
-      (when (< (state-display-energy best-state) best-energy)
-        (set! best-energy (state-display-energy best-state))
-        (displayln "=")
-        (display-place best)
-        (displayln "="))
-      (printf "~a ~a ~a\n"
-              (~r iteration #:min-width 5)
-              (~> population first state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7))
-              (~>> population
-                   (map (λ~> state-display-energy exact->inexact (~r #:precision '(= 4) #:min-width 7)))
-                   sequence->list)))
-    (display-place (state-place (clonal-selection updater))))
