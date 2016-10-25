@@ -1,5 +1,6 @@
 #lang s-exp "rocket.rkt"
-(require plot
+(require gregor
+         plot
          plot/no-gui)
 
 (provide main)
@@ -20,45 +21,65 @@
 
 (define (process input)
   (for/list ([line (in-lines input)]
-             #:when (regexp-match? #px"^\\s*\\d+\\s+\\d+(?:\\.\\d+)?\\s+\\(" line))
-    (match-define (list _ best evals)
-      (regexp-match #px"^\\s*\\d+\\s+(\\d+(?:\\.\\d+)?)\\s+\\((\\d+(?:\\.\\d+)?(?:\\s+\\d+(?:\\.\\d+)?)*)\\)" line))
-    (list (string->number best) (average evals))))
+             #:when (regexp-match? #px"^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+\\d+" line))
+    (match-define (list _ time best evals)
+      (regexp-match #px"^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\\s+\\d+\\s+(\\d+(?:\\.\\d+)?)\\s+\\((\\d+(?:\\.\\d+)?(?:\\s+\\d+(?:\\.\\d+)?)*)\\)" line))
+    (list (->posix (parse-datetime time "yyyy-MM-dd HH:mm:ss"))
+          (string->number best)
+          (average evals))))
 
 (define (read-data input-filename)
-  (define (indexed proc data)
-    (for/list ([x (in-naturals)]
-               [d data])
-      (list x (proc d))))
-  (given (data (call-with-input-file* input-filename process #:mode 'text))
-         (best-line (indexed first data))
-         (avg-line (indexed second data)))
-  best-line)
+  (given (raw-data (call-with-input-file* input-filename process #:mode 'text))
+         (data (map (curry take 2) raw-data))
+         (point-zero (first (first data)))
+         (->minutes (λ (secs) (/ (- secs point-zero) 60)))
+         (rslt (map (λ (lst) (list (->minutes (first lst)) (second lst))) data)))
+  rslt)
 
 (define (plot-data lsts [output-filename #f])
-  (define data (for/list ([color (in '(red blue red black black black black black black black))]
-                          [label (in (list "Manhattan" "Vizinhança"))]
-                          #;[color (in (repeat 'black))]
+  (given (labels (append (list "Simulated Annealing"
+                               "Clonal Selection"
+                               #;"Ant Colony Optimization")
+                         (repeat #f)))
+         (data (for/list ([color (in-cycle '(red blue #;gray))]
+                          [label (in labels)]
                           [d (in lsts)])
-                 (lines d #:color color #:label label)))
+                 (lines d #:color color #:label label))))
   (if output-filename
       (plot-file data
                  output-filename
-                 #:x-label "Iterações"
+                 #:x-label "Minutos"
                  #:y-label "Custo"
-                 #:legend-ancho 'top-right)
+                 #:legend-anchor 'top-right)
       (plot data
-            #:x-label "Iterações"
-            #:y-label "Custo")))
+            #:x-label "Minutos"
+            #:y-label "Custo"
+            #:legend-anchor 'top-right)))
 
 (define (logfile path)
   (define rslt (regexp-match #px"\\/(mut[^.\\/]+)\\.log$" path))
   (and rslt (ref rslt 1)))
 
 (define (main)
-  (given [out-file "/tmp/vizinho-vs-manhattan.png"]
-         [ds (list (read-data "rslts/mut12345-manhattan.log")
-                   (read-data "rslts/mut12345-block.log"))])
+  (given [out-file "/tmp/rslts-race.png"]
+         [ds (list (read-data "rslts-race/simulated-annealing1.log")
+                   (read-data "rslts-race/clonal-selection1.log")
+                   #;(read-data "rslts-race/ant-colony-optimization1.log")
+                   (read-data "rslts-race/simulated-annealing2.log")
+                   (read-data "rslts-race/clonal-selection2.log")
+                   #;(read-data "rslts-race/ant-colony-optimization2.log")
+                   (read-data "rslts-race/simulated-annealing3.log")
+                   (read-data "rslts-race/clonal-selection3.log")
+                   #;(read-data "rslts-race/ant-colony-optimization3.log")
+                   (read-data "rslts-race/simulated-annealing4.log")
+                   (read-data "rslts-race/clonal-selection4.log")
+                   #;(read-data "rslts-race/ant-colony-optimization4.log")
+                   (read-data "rslts-race/simulated-annealing5.log")
+                   (read-data "rslts-race/clonal-selection5.log")
+                   #;(read-data "rslts-race/ant-colony-optimization5.log")
+                   (read-data "rslts-race/simulated-annealing6.log")
+                   (read-data "rslts-race/clonal-selection6.log")
+                   #;(read-data "rslts-race/ant-colony-optimization6.log"))])
   (plot-data ds #f))
 
 (main)
