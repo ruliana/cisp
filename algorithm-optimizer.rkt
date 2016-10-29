@@ -13,23 +13,18 @@
 (provide main
          algorithm-stop-after)
 
-(define algorithm-stop-after (make-parameter (minutes 2)))
+(define algorithm-stop-after (make-parameter (minutes 5)))
 
 (define (display-state best-state population iteration)
-  (printf "~a ~a ~a ~a\n"
+  (printf " | ~a ~a ~a"
           (~t (now) "yyyy-MM-dd HH:mm:ss")
           (~r iteration #:min-width 5)
           (~> best-state
-              state-display-energy
+              ann-state-energy
               exact->inexact
-              (~r #:precision '(= 4) #:min-width 7))
-          (~>> population
-               (map (λ~> state-display-energy
-                         exact->inexact
-                         (~r #:precision '(= 4) #:min-width 7)))
-               sequence->list)))
+              (~r #:precision '(= 4) #:min-width 7))))
 
-(define (make-updater #:at-step [at-step 1])
+(define (make-updater-inner #:at-step [at-step 1])
   (define start (now))
   (define best-energy +inf.0)
   
@@ -38,14 +33,25 @@
       (real-updater best-state population iteration)))
   
   (define (real-updater best-state population iteration)
-    (define best (state-place best-state))
-    (display-state best-state population iteration)
     (when (datetime>=? (now) (+period start (algorithm-stop-after)))
       (break-thread (current-thread))))
+  
+  updater)
+
+(define (make-updater-outer #:at-step [at-step 1])
+  (define start (now))
+  (define best-energy +inf.0)
+  
+  (define (updater best-state population iteration)
+    (when (zero? (remainder iteration at-step))
+      (real-updater best-state population iteration)))
+  
+  (define (real-updater best-state population iteration)
+    (display-state best-state population iteration))
+  
   updater)
 
 (define (main)
-  
   (define rslt 
     (parameterize ([population-size 5]
                    [population-size-best 2]
@@ -58,8 +64,8 @@
                                              ann-mut-operator2
                                              ann-mut-operator3
                                              ann-mut-operator4)])
-      (define updater (make-updater #:at-step 1))
-      (clonal-selection)))
+      (define updater (make-updater-outer #:at-step 1))
+      (clonal-selection #:updater updater)))
   
   #;(define updater (make-updater #:at-step 1))
   #;(clonal-selection (place-random) #:updater updater)
@@ -97,7 +103,7 @@
 (define (ann-make-state-randomized)
   (given annealing-cycle (random 1 10000)
          temperature-center (random 1 10000)
-         temperature-height (/ (random 1 100) 10)
+         temperature-height (/ (random 1 100) 10.0)
          temperature-slope (random))
   (ann-make-state (ann-params annealing-cycle
                               temperature-center
@@ -109,13 +115,15 @@
                  [temperature-center (ann-params-temperature-center params)]
                  [temperature-height (ann-params-temperature-height params)]
                  [temperature-slope (ann-params-temperature-slope params)])
-    (printf "====> ~a ~a ~a ~a\n"
-            (annealing-cycle)
-            (temperature-center)
-            (temperature-height)
-            (temperature-slope))
-    (define ann-updater (make-updater #:at-step 100))
-    (simulated-annealing (place-random) #:updater ann-updater)))
+    (define ann-updater (make-updater-inner #:at-step 100))
+    (define rslt (simulated-annealing (place-random) #:updater ann-updater))
+    (printf "\nCycle: ~a, Center: ~a, Height: ~a, Slope: ~a, Energy: ~a"
+          (~r (annealing-cycle) #:min-width 5)
+          (~r (temperature-center) #:min-width 5)
+          (~r (temperature-height) #:precision '(= 3) #:min-width 6)
+          (~r (temperature-slope) #:precision '(= 3) #:min-width 6)
+          (~r rslt #:precision '(= 3) #:min-width 5))
+    rslt))
 
 (define (ann-mut-operator1 params)
   (given value (ann-params-annealing-cycle params)

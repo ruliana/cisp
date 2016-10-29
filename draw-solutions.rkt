@@ -55,6 +55,9 @@
   updater)
 
 (define (main)
+  ;Cycle:  4484, Center: 1444, Height:  8.100, Slope:  0.181, Energy: 39.309
+  ;Cycle:  4484, Center:  935, Height:  8.100, Slope:  0.181, Energy: 39.755
+  ;Cycle:  4484, Center: 1444, Height:  8.100, Slope:  0.097, Energy: 39.772  
   (parameterize ([annealing-cycle 8959]
                  [temperature-center 1336]
                  [temperature-height 1.9338]
